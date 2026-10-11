@@ -20,8 +20,16 @@ const r = spawnSync(
   { cwd: pkgDir, stdio: 'inherit' },
 );
 if (r.status !== 0) {
-  console.error(`[rebuild:electron] prebuild-install 失败（status ${r.status}），` +
-    '可改用源码编译：cd node_modules/better-sqlite3 && npx @electron/rebuild');
-  process.exit(r.status ?? 1);
+  // Electron 新版本（如 v44 / ABI 149）的预编译包可能尚未发布，回退到源码编译
+  console.error(`[rebuild:electron] prebuild-install 未找到 Electron ${electronVersion} 预编译包，改用源码编译…`);
+  const rebuild = spawnSync(
+    path.join('node_modules', '.bin', 'electron-rebuild'),
+    ['-f', '-w', 'better-sqlite3'],
+    { stdio: 'inherit' },
+  );
+  if (rebuild.status !== 0) {
+    console.error(`[rebuild:electron] @electron/rebuild 源码编译失败（status ${rebuild.status}）`);
+    process.exit(rebuild.status ?? 1);
+  }
 }
 console.log(`[rebuild:electron] better-sqlite3 已切换到 Electron ${electronVersion} ABI`);
