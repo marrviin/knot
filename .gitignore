@@ -10,5 +10,6 @@ src-tauri/gen/schemas/
 .joycode/
 .claude/settings.local.json
 .codegraph/
+CLAUDE.md
 
 *.log
