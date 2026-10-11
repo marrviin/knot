@@ -15,6 +15,7 @@
     "start": "electron .",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "preview": "vite preview",
+    "dist": "electron-builder --mac",
     "rebuild:electron": "node scripts/rebuild-sqlite-electron.mjs"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@ant-design/icons": "^6.3.2",
     "antd": "^6.6.2",
     "chokidar": "^4.0.3",
+    "better-sqlite3": "^12.4.1",
     "classnames": "^2.5.1",
     "mem0ai": "^3.3.1",
     "react": "^19.2.0",
@@ -34,10 +36,10 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "better-sqlite3": "^12.4.1",
     "concurrently": "^9",
     "cross-env": "^10",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0",

@@ -1,0 +1,42 @@
+name: Release
+
+# push v* tag -> 打包 macOS 应用并发布 GitHub Release
+# （手动触发只打包验证，不发版）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build renderer & main
+        run: pnpm build
+
+      - name: Package & publish release
+        # --publish always 需要 tag 才能找到目标 release；手动触发时只打包
+        run: npx electron-builder --mac ${{ startsWith(github.ref, 'refs/tags/') && '--publish always' || '--publish never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # CI 无签名证书，配合 electron-builder.yml 的 identity: null 走 ad-hoc 签名
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
