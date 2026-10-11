@@ -1,0 +1,10 @@
+allowBuilds:
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+
+overrides:
+  # electron-builder 26.x 的 app-builder-lib 依赖 @electron/get 的
+  # ElectronDownloadCacheMode 导出，^3.0.0 会解析到没有该导出的 3.0.0
+  "@electron/get@^3.0.0": 3.1.0

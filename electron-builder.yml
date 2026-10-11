@@ -1,0 +1,29 @@
+appId: dev.marrviin.knot
+productName: Knot
+
+directories:
+  # 图标等构建资源（build/icon.icns）
+  buildResources: build
+  output: release
+
+# package.json + 生产依赖 node_modules 会被 electron-builder 自动打入，
+# 这里只需补充构建产物（main 指向 dist-electron/main.cjs，渲染层在 dist/）
+files:
+  - dist/**/*
+  - dist-electron/**/*
+
+# better-sqlite3 含 .node 原生模块，必须解包到 asar 外才能被 require
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+
+# CI 上没有签名证书，identity: null 走 ad-hoc 签名（本机可正常运行，
+# 分发给他人首次打开需右键 -> 打开；正式分发再接 Apple Developer ID 公证）
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
