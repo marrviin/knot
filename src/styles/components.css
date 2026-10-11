@@ -1,0 +1,46 @@
+/* ── Project components ───────────────────────────────────────────────────────
+ * First-class component styles that Tailwind single-element atomic classes can't
+ * express (pseudo-elements, keyframe animations, cross-element state selectors) live
+ * here; element static styles are always Tailwind atomic classes in JSX. */
+
+/* ── Sidebar list item name marquee (aligned with manta-compare's recent-marquee) ──
+ * Single-line ellipsis by default; on hover with actual overflow (shift>0 → duration>0),
+ * loops leftward to reveal the full name. Scroll distance comes from --marquee-shift
+ * (measured in JSX as scrollWidth-clientWidth); long and short names scroll at a constant
+ * speed and never over-scroll. */
+@layer components {
+  .pc-marquee {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .pc-marquee__inner {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    will-change: transform;
+  }
+  /* Loop-scroll on hover with actual overflow; without overflow (duration=0) the ellipsis stays put. */
+  .pc-marquee:hover .pc-marquee__inner {
+    max-width: none;
+    width: max-content;
+    text-overflow: clip;
+    animation: pc-marquee-scroll var(--marquee-duration, 6s) linear infinite;
+  }
+  @keyframes pc-marquee-scroll {
+    0%,
+    12% {
+      transform: translateX(0);
+    }
+    88%,
+    100% {
+      transform: translateX(var(--marquee-shift, 0));
+    }
+  }
+}
