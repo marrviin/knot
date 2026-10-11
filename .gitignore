@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+src-tauri/target/
+src-tauri/gen/schemas/
+.DS_Store
+*.local
+
+# 本地 agent / 工具状态
+.joycode/
+.claude/settings.local.json
+.codegraph/
+
+*.log
