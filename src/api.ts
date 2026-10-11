@@ -15,6 +15,10 @@ declare global {
 
 // ---------- Projects ----------
 
+/** Reserved path of the global-memory virtual project (created by the main process,
+ *  pinned first, not removable); agent-level memories like hermes's land here */
+export const GLOBAL_PROJECT = '__global__';
+
 export const listProjects = () => window.knot.invoke<Project[]>('list_projects');
 
 export const addProject = (path: string) => window.knot.invoke<Project>('add_project', path);
@@ -53,7 +57,7 @@ export interface LlmSettings {
 
 export const getSettings = () => window.knot.invoke<LlmSettings>('get_settings');
 
-/** Pass null for apiKey to keep the existing value unchanged */
+/** Pass null for apiKey to keep the existing value; '' explicitly clears it */
 export const saveSettings = (
   enabled: boolean,
   baseUrl: string,
@@ -75,6 +79,8 @@ export interface WatchRule {
   match: string;
   enabled: boolean;
   builtin?: boolean;
+  /** Basenames treated as catalogs and never ingested; default ['MEMORY.md'], [] opts out */
+  indexFiles?: string[];
 }
 
 export const getWatchRules = () => window.knot.invoke<WatchRule[]>('get_watch_rules');
@@ -112,3 +118,10 @@ export interface SemanticHit {
 
 export const searchMemories = (projectId: string, query: string) =>
   window.knot.invoke<SemanticHit[]>('semantic_search', projectId, query);
+
+// ---------- External links ----------
+
+export const openExternal = (url: string) => window.knot.invoke('open_external', url);
+
+// Open a local file with its default app (used by the memory card's source path)
+export const openPath = (path: string) => window.knot.invoke('open_path', path);

@@ -13,13 +13,18 @@ import {
   ApiOutlined,
   CloseOutlined,
   ExperimentOutlined,
+  GithubOutlined,
   InfoCircleOutlined,
   LinkOutlined,
+  MessageOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import cx from 'classnames';
 import { menuSkinTheme } from './menu-skin';
 import { AgentIcon } from './agent-icon';
 import * as api from './api';
+import appIcon from './assets/app-icon.png';
+import pkg from '../package.json';
 
 type Notify = (message: string, type?: 'info' | 'error') => void;
 
@@ -137,6 +142,9 @@ function GeneralPane({ onClose, onNotify }: { onClose: () => void; onNotify: Not
   const [baseUrl, setBaseUrl] = useState('');
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('');
+  /** Whether the user touched the key field this session: untouched → null (keep the
+   *  stored key), touched-and-cleared → '' (explicit clear), touched-with-value → replace. */
+  const [apiKeyTouched, setApiKeyTouched] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [legacyAvailable, setLegacyAvailable] = useState(false);
@@ -170,7 +178,8 @@ function GeneralPane({ onClose, onNotify }: { onClose: () => void; onNotify: Not
   const save = async () => {
     setSaving(true);
     try {
-      await api.saveSettings(enabled, baseUrl.trim(), apiKey.trim() || null, model.trim());
+      const key = apiKeyTouched ? apiKey.trim() : null;
+      await api.saveSettings(enabled, baseUrl.trim(), key, model.trim());
       onClose();
       onNotify('提炼层设置已保存');
     } catch (e) {
@@ -184,13 +193,15 @@ function GeneralPane({ onClose, onNotify }: { onClose: () => void; onNotify: Not
     <div className="flex flex-col gap-4">
       <p className="m-0 mt-1 text-xs leading-5 text-muted">
         配置 MiniMax 系列大模型服务后，导入记忆时会用 LLM 提炼硬核事实、语义去重并裁决新旧冲突；
-        记忆与向量全部只存本地，仅提炼时调用该服务。未启用时按内置规则提取。
+        记忆与向量全部只存本地，仅提炼时调用该服务。未启用或未配置时不会自动提炼，仅支持手动添加记忆。
       </p>
 
       <div className="flex items-center justify-between gap-4 rounded-lg bg-surface px-4 py-3">
         <div className="min-w-0">
           <div className="text-[13px] font-medium text-fg">启用 LLM 智能提炼</div>
-          <div className="mt-0.5 text-xs text-muted">关闭后按内置规则提取记忆</div>
+          <div className="mt-0.5 text-xs text-muted">
+            关闭后不调用 LLM，监听与存量导入都会暂停
+          </div>
         </div>
         <Switch checked={enabled} onChange={setEnabled} />
       </div>
@@ -213,10 +224,16 @@ function GeneralPane({ onClose, onNotify }: { onClose: () => void; onNotify: Not
         />
       </FieldRow>
 
-      <FieldRow title="API Key" desc={hasApiKey ? '已保存，留空不修改' : undefined}>
+      <FieldRow
+        title="API Key"
+        desc={hasApiKey ? '已保存，留空并保存即清除' : undefined}
+      >
         <Input.Password
           value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
+          onChange={(e) => {
+            setApiKey(e.target.value);
+            setApiKeyTouched(true);
+          }}
           placeholder={hasApiKey ? '••••••••' : 'sk-...'}
           style={{ width: 280 }}
         />
@@ -241,14 +258,16 @@ function GeneralPane({ onClose, onNotify }: { onClose: () => void; onNotify: Not
   );
 }
 
-/** "Memory watching" pane: builtin cards have locked paths with only a toggle; custom cards use an
- *  "input + add" list-editor pattern (aligned with manta-compare's RuleListEditor). After saving,
- *  the main process hot-reloads watching immediately and one-time imports existing content for
- *  newly enabled cards. */
+/** "Memory watching" pane: builtin cards have locked paths with only a toggle; custom cards are
+ *  added via a top-right button that opens a small form modal. Changes persist automatically
+ *  (toggle / delete / add save immediately, text edits save on blur) — the main process
+ *  hot-reloads watching on every save and one-time imports existing content for newly enabled
+ *  cards. */
 function WatchPane({ onNotify }: { onNotify: Notify }) {
   const [rules, setRules] = useState<api.WatchRule[] | null>(null);
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [draftAgent, setDraftAgent] = useState('');
+  const [draftMatch, setDraftMatch] = useState('');
 
   useEffect(() => {
     api
@@ -263,61 +282,77 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
   const builtins = rules.filter((r) => r.builtin);
   const customs = rules.filter((r) => !r.builtin);
 
+  // Local-only state change (text inputs update on every keystroke; persisted on blur).
   const update = (id: string, patch: Partial<api.WatchRule>) => {
     setRules(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
-  // Default agent name for custom cards: the first directory segment of the first entry
+  // Persist immediately: hot-reloads watching in the main process (and imports existing
+  // content for newly enabled cards), so it's reserved for discrete actions.
+  // Rules with an empty match are sent as-is: filtering them here would silently
+  // delete a card mid-edit (persist fires on blur), losing the user's input.
+  const persist = async (next: api.WatchRule[]) => {
+    setRules(next);
+    try {
+      await api.saveWatchRules(next);
+    } catch (e: any) {
+      onNotify(`保存失败: ${e?.message ?? e}`, 'error');
+    }
+  };
+
+  // Default agent name for a custom card: the first directory segment of the first entry
   // (dot stripped), e.g. .cursor/memory/*.md → cursor
-  const addCard = (match: string) => {
-    const firstSeg =
-      match
-        .split(',')[0]!
-        .split('/')
-        .find((seg) => seg && !seg.startsWith('.') && !seg.includes('*')) ?? '';
-    setRules([
+  const deriveAgent = (match: string) =>
+    match
+      .split(',')[0]!
+      .split('/')
+      .find((seg) => seg && !seg.startsWith('.') && !seg.includes('*')) ?? '';
+
+  const addCard = () => {
+    const match = draftMatch.trim();
+    if (!match) return;
+    const agent = draftAgent.trim() || deriveAgent(match) || 'custom';
+    void persist([
       ...rules,
       {
         id: `watch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        agent: firstSeg || 'custom',
+        agent,
         match,
         enabled: true,
       },
     ]);
-    setDraft('');
-  };
-
-  const save = async () => {
-    const valid = rules.filter((r) => r.match.trim());
-    setSaving(true);
-    try {
-      const saved = await api.saveWatchRules(valid);
-      setRules(saved);
-      onNotify(
-        `监听卡片已保存（启用 ${saved.filter((r) => r.enabled).length} 张），正在导入新启用卡片的存量记忆`,
-      );
-    } catch (e: any) {
-      onNotify(`保存失败: ${e?.message ?? e}`, 'error');
-    } finally {
-      setSaving(false);
-    }
+    setAddOpen(false);
+    setDraftAgent('');
+    setDraftMatch('');
+    onNotify(`已添加「${agent}」监听卡片`);
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="m-0 mt-1 text-xs leading-5 text-muted">
-        每个 Agent 一张卡片，打开开关即监听其记忆文件，新增或修改的记忆经提炼后自动入库。
-        自定义卡片的匹配表达式用逗号分隔多个条目，支持 <code>*</code> / <code>**</code> 通配符；
-        相对路径按每个已登记项目的根目录展开，<code>&lt;slug&gt;</code> 展开为项目路径 slug。
-        <code>MEMORY.md</code> 索引不会入库。
-      </p>
+      <div className="mt-1 flex items-start justify-between gap-4">
+        <p className="m-0 flex-1 text-xs leading-5 text-muted">
+          每个 Agent 一张卡片，打开开关即监听其记忆文件，新增或修改的记忆经提炼后自动入库。
+          自定义卡片的匹配表达式用逗号分隔多个条目，支持 <code>*</code> / <code>**</code> 通配符；
+          相对路径按每个已登记项目的根目录展开，<code>&lt;slug&gt;</code> 展开为项目路径 slug，
+          绝对路径（~ 开头）不落在任何项目内时归入「全局记忆」。
+          <code>MEMORY.md</code> 默认按索引文件跳过（hermes 等以它为正文的卡片除外）。
+        </p>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          className="shrink-0"
+          onClick={() => setAddOpen(true)}
+        >
+          添加卡片
+        </Button>
+      </div>
 
-      <div className="mt-1 text-xs font-semibold text-muted">内置 Agent</div>
+      <div className="text-xs font-semibold text-muted">内置 Agent</div>
       {builtins.map((r) => (
         <div
           key={r.id}
           className={cx(
-            'flex items-center gap-2.5 rounded-lg bg-surface px-4 py-3 transition-opacity',
+            'flex items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 transition-opacity',
             !r.enabled && 'opacity-55',
           )}
         >
@@ -333,74 +368,107 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
               {r.match}
             </div>
           </div>
-          <Switch checked={r.enabled} onChange={(enabled) => update(r.id, { enabled })} />
+          <Switch
+            checked={r.enabled}
+            onChange={(enabled) => void persist(rules.map((x) => (x.id === r.id ? { ...x, enabled } : x)))}
+          />
         </div>
       ))}
 
-      <div className="mt-2 text-xs font-semibold text-muted">自定义</div>
       {customs.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {customs.map((r) => (
-            <div
-              key={r.id}
-              className={cx(
-                'flex items-center gap-2.5 rounded-lg bg-surface px-3 py-2.5 transition-opacity',
-                !r.enabled && 'opacity-55',
-              )}
-            >
-              <AgentIcon agent={r.agent.trim() || 'custom'} />
-              <Input
-                value={r.agent}
-                onChange={(e) => update(r.id, { agent: e.target.value })}
-                placeholder="Agent 名"
-                variant="borderless"
-                className="!px-0 font-medium"
-                style={{ width: 120 }}
-              />
-              <Input
-                value={r.match}
-                onChange={(e) => update(r.id, { match: e.target.value })}
-                placeholder=".cursor/memory/*.md"
-                variant="borderless"
-                className="min-w-0 flex-1 !px-0 font-mono text-[13px]"
-              />
-              <Popconfirm
-                title="删除该监听卡片？已导入的记忆会保留。"
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => setRules(rules.filter((x) => x.id !== r.id))}
+        <>
+          <div className="mt-2 text-xs font-semibold text-muted">自定义</div>
+          <div className="flex flex-col gap-2">
+            {customs.map((r) => (
+              <div
+                key={r.id}
+                className={cx(
+                  'flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5 transition-opacity',
+                  !r.enabled && 'opacity-55',
+                )}
               >
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CloseOutlined />}
-                  aria-label={`删除 ${r.agent}`}
+                <AgentIcon agent={r.agent.trim() || 'custom'} />
+                <Input
+                  value={r.agent}
+                  onChange={(e) => update(r.id, { agent: e.target.value })}
+                  onBlur={() => void persist(rules)}
+                  placeholder="Agent 名"
+                  variant="borderless"
+                  className="!px-0 font-medium"
+                  style={{ width: 120 }}
                 />
-              </Popconfirm>
-              <Switch checked={r.enabled} onChange={(enabled) => update(r.id, { enabled })} />
-            </div>
-          ))}
-        </div>
+                <Input
+                  value={r.match}
+                  onChange={(e) => update(r.id, { match: e.target.value })}
+                  onBlur={() => void persist(rules)}
+                  placeholder=".cursor/memory/*.md"
+                  variant="borderless"
+                  className="min-w-0 flex-1 !px-0 font-mono text-[13px]"
+                />
+                <Popconfirm
+                  title="删除该监听卡片？已导入的记忆会保留。"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() =>
+                    void persist(rules.filter((x) => x.id !== r.id))
+                  }
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloseOutlined />}
+                    aria-label={`删除 ${r.agent}`}
+                  />
+                </Popconfirm>
+                <Switch
+                  checked={r.enabled}
+                  onChange={(enabled) =>
+                    void persist(rules.map((x) => (x.id === r.id ? { ...x, enabled } : x)))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      <div className="flex gap-2">
-        <Input
-          value={draft}
-          placeholder="添加自定义监听，如 .cursor/memory/*.md"
-          onChange={(e) => setDraft(e.target.value)}
-          onPressEnter={() => draft.trim() && addCard(draft.trim())}
-        />
-        <Button type="primary" disabled={!draft.trim()} onClick={() => addCard(draft.trim())}>
-          添加
-        </Button>
-      </div>
-
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <Button type="primary" loading={saving} onClick={() => void save()}>
-          保存
-        </Button>
-      </div>
+      {/* Add-card form modal: agent name is optional (derived from the match path when blank). */}
+      <Modal
+        open={addOpen}
+        title="添加监听卡片"
+        okText="添加"
+        cancelText="取消"
+        width={480}
+        okButtonProps={{ disabled: !draftMatch.trim() }}
+        onOk={addCard}
+        onCancel={() => setAddOpen(false)}
+        destroyOnHidden
+      >
+        <div className="flex flex-col gap-4 py-2">
+          <div>
+            <div className="mb-1.5 text-[13px] font-medium text-fg">匹配表达式</div>
+            <Input
+              value={draftMatch}
+              onChange={(e) => setDraftMatch(e.target.value)}
+              onPressEnter={addCard}
+              placeholder=".cursor/memory/*.md，逗号分隔多个条目"
+              autoFocus
+            />
+          </div>
+          <div>
+            <div className="mb-1.5 text-[13px] font-medium text-fg">
+              Agent 名<span className="ml-1.5 text-xs font-normal text-muted">留空则从路径推断</span>
+            </div>
+            <Input
+              value={draftAgent}
+              onChange={(e) => setDraftAgent(e.target.value)}
+              onPressEnter={addCard}
+              placeholder="如 cursor"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -442,8 +510,9 @@ function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
         <code> .knot-backup</code>），变更后需重启对应 Agent 生效。
       </p>
 
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface px-4 py-3">
-        <div className="min-w-0">
+      <div className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+        <AgentIcon agent="claude-code" size={32} />
+        <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium text-fg">Claude Code</div>
           <div className="mt-0.5 text-xs text-muted">
             {bound
@@ -457,20 +526,45 @@ function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
   );
 }
 
-/** "About" pane: app icon, name and positioning, footer copyright. */
+const GITHUB_URL = 'https://github.com/marrviin/knot';
+const FEEDBACK_URL = `${GITHUB_URL}/issues/new`;
+
+/** "About" pane: app icon, name and version, a feedback button, and a footer
+ *  with the repo link + copyright (aligned with manta-compare's about page). */
 function AboutPane() {
   return (
     // min-h-full + mt-auto: pin the footer to the bottom of the visible panel (the panel content area is the scroll container).
     <div className="flex min-h-full flex-col">
       <div className="flex flex-col items-center gap-3 py-14">
-        <span className="text-6xl leading-none select-none">🐋</span>
+        <img
+          src={appIcon}
+          alt="Knot"
+          className="h-20 w-20 rounded-xl object-contain select-none"
+          draggable={false}
+        />
         <div className="text-lg font-semibold text-fg">Knot</div>
-        <div className="text-xs text-muted">本地共享记忆总线</div>
+        <div className="text-xs text-muted">v{pkg.version}</div>
+        <Button
+          icon={<MessageOutlined />}
+          className="mt-2"
+          onClick={() => void api.openExternal(FEEDBACK_URL)}
+        >
+          反馈问题
+        </Button>
       </div>
 
+      {/* Footer: repo link + copyright. */}
       <div className="mt-auto flex flex-col items-center gap-1.5 pb-2">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[12px] text-muted bg-transparent border-0 cursor-pointer transition-colors hover:text-accent"
+          onClick={() => void api.openExternal(GITHUB_URL)}
+        >
+          <GithubOutlined />
+          <span>github.com/marrviin/knot</span>
+        </button>
         <span className="text-[11px] text-muted select-none">
-          © {new Date().getFullYear()} Knot
+          © {new Date().getFullYear()} marrviin
         </span>
       </div>
     </div>

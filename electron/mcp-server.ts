@@ -85,7 +85,8 @@ function toolsManifest() {
             },
             project_id: {
               type: 'string',
-              description: '项目名(可选)。默认取当前工作目录的目录名。',
+              description:
+                '项目标识(可选):项目绝对路径(或其子目录路径)或项目名。默认取当前工作目录,按已登记项目的路径匹配。',
             },
           },
         },
@@ -103,7 +104,8 @@ function toolError(message: string) {
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
-function handleToolCall(msg: any) {
+// (exported for tests)
+export function handleToolCall(msg: any) {
   const name: string = msg.params?.name ?? '';
   const args = msg.params?.arguments ?? {};
 
@@ -121,33 +123,49 @@ function handleToolCall(msg: any) {
   return { content: [{ type: 'text', text }] };
 }
 
+/** The MCP process's cwd is the directory Claude Code was launched from — resolve
+ *  it against registered projects by path (exact or inside), not by basename:
+ *  two same-named directories would otherwise read each other's memories, and a
+ *  renamed directory would silently match nothing. */
 function currentProjectId(): string {
   try {
-    return process.cwd().split('/').pop() || 'unknown';
+    return process.cwd();
   } catch {
-    return 'unknown';
+    return '';
   }
 }
 
-function fetchKnots(args: any): string {
-  const projectId: string = args.project_id ?? currentProjectId();
-  const query: string | undefined = args.query;
+// (exported for tests)
+export function fetchKnots(args: any): string {
+  const requested: string = args.project_id ?? currentProjectId();
+  const query: string | undefined = typeof args.query === 'string' && args.query.trim() ? args.query.trim() : undefined;
+
+  const resolved = store.resolveProject(requested);
+  if (!resolved) {
+    return `【Knot 中央共享脑提示】未能定位与「${requested}」对应的项目（按绝对路径或项目名匹配）。` +
+      `请调用 list_knot_projects 查看已登记项目；若当前项目未登记，需先在 Knot 中接管该项目目录。`;
+  }
 
   let facts: store.Fact[];
   try {
-    facts = store.searchFacts(projectId, query);
+    facts = store.searchFacts(resolved, query);
   } catch (e) {
     return `【Knot 中央共享脑提示】检索失败: ${e}`;
   }
 
   if (facts.length === 0) {
-    return `【Knot 中央共享脑提示】项目「${projectId}」${
-      query ? '检索无命中，' : ''
-    }暂无共享记忆沉淀。`;
+    if (query) {
+      return `【Knot 中央共享脑提示】项目「${resolved}」中检索「${query}」无命中。可换用其他关键词重试，` +
+        `或调用 list_knot_projects 确认项目。`;
+    }
+    return `【Knot 中央共享脑提示】项目「${resolved}」暂无共享记忆沉淀。`;
   }
 
   const body = facts.map((f) => `- ${f.content}`).join('\n');
-  return `【Knot 中央共享脑提示】项目「${projectId}」关联到的历史接力资产如下：\n${body}`;
+  const head = query
+    ? `项目「${resolved}」检索到的历史接力资产如下`
+    : `项目「${resolved}」最近沉淀的共享记忆如下`;
+  return `【Knot 中央共享脑提示】${head}：\n${body}`;
 }
 
 function listProjectsText(): string {

@@ -2,13 +2,14 @@
 //! (counterpart of the original Tauri commands.rs).
 //! Channel names map one-to-one to the invoke names in the renderer's api.ts.
 
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron';
 
 import * as store from './store';
 import * as settings from './settings';
 import * as inject from './inject';
 import * as mem0 from './mem0';
 import * as watcher from './watcher';
+import { log } from './log';
 
 export interface IpcContext {
   userDataDir: string;
@@ -29,18 +30,43 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('list_projects', () => ok(() => store.listProjects()));
 
   ipcMain.handle('add_project', async (_e, path: string) => {
-    const fs = await import('node:fs');
-    const resolved = fs.realpathSync(path);
-    if (!fs.statSync(resolved).isDirectory()) return `目录不存在：${path}`;
-    const isNew = store.insertProject(resolved);
-    if (isNew) watcher.rescan();
-    return store.listProjects().find((p) => p.path === resolved);
+    log(`add_project: 收到路径 ${path}`);
+    try {
+      const fs = await import('node:fs');
+      const resolved = fs.realpathSync(path);
+      if (!fs.statSync(resolved).isDirectory()) {
+        // Throw (not return a string): the renderer would otherwise treat the
+        // string as a Project object and toast a fake "已接管项目「undefined」".
+        throw new Error(`目录不存在：${path}`);
+      }
+      const isNew = store.insertProject(resolved);
+      log(`add_project: resolved=${resolved} isNew=${isNew}`);
+      if (isNew) {
+        watcher.rescan();
+        // One-time import of the new project's existing content (markers skip
+        // already-imported targets). Fire-and-forget: it's minutes of LLM calls —
+        // the IPC must return so the panel mounts and progress events can show.
+        void watcher
+          .importExisting((projectId, report) => {
+            ctx.onFactsChanged({ path: projectId, ...report });
+          })
+          .catch((e) => log(`add_project 存量导入失败: ${e}`));
+      }
+      const project = store.listProjects().find((p) => p.path === resolved);
+      if (!project) throw new Error(`项目注册失败：${resolved}`);
+      return project;
+    } catch (e) {
+      log(`add_project 失败: ${e}`);
+      throw new Error(String(e));
+    }
   });
 
   ipcMain.handle('remove_project', (_e, path: string) =>
     ok(() => {
       store.removeProject(path);
-      // The corresponding chokidar watch stays in place, but ingest verifies the project is still registered first
+      // Drop the removed project's watch roots from chokidar right away instead of
+      // leaving them matched-and-discarded on every change until the next rescan.
+      watcher.rescan();
     }),
   );
 
@@ -58,12 +84,14 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('update_fact', async (_e, id: string, projectId: string, content: string) => {
     const trimmed = content.trim();
     if (!trimmed) throw new Error('记忆内容不能为空');
+    // updateMemory throws when mem0 fails — the mirror must not diverge from the
+    // truth source (a diverged "success" resurrects old content on the next sync).
     await mem0.updateMemory(ctx.userDataDir, id, trimmed);
     ctx.onFactsChanged({ path: projectId, added: 0 });
   });
 
   ipcMain.handle('delete_fact', async (_e, id: string, projectId: string) => {
-    await mem0.removeMemory(id);
+    await mem0.removeMemory(ctx.userDataDir, id);
     ctx.onFactsChanged({ path: projectId, deleted: 1 });
     return null;
   });
@@ -85,6 +113,17 @@ export function registerIpc(ctx: IpcContext): void {
     (_e, enabled: boolean, baseUrl: string, apiKey: string | null, model: string) =>
       ok(() => {
         settings.save(store, enabled, baseUrl, apiKey, model);
+        // Enabling (or reconfiguring) takes effect immediately: rebuild watchers and
+        // import pending existing content — no app restart needed. Fire-and-forget:
+        // the import is minutes of LLM calls; progress events drive the UI.
+        if (enabled) {
+          watcher.rescan();
+          void watcher
+            .importExisting((projectId, report) => {
+              ctx.onFactsChanged({ path: projectId, ...report });
+            })
+            .catch((e) => log(`save_settings 触发的存量导入失败: ${e}`));
+        }
       }),
   );
 
@@ -99,13 +138,19 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('get_watch_rules', () => ok(() => settings.loadWatchRules(store)));
 
-  // Rebuild watchers immediately after saving, then one-time import existing content for new rules
+  // Rebuild watchers immediately after saving, then one-time import existing content for new rules.
+  // Rules are saved synchronously before the import, so an import failure (reported to
+  // the renderer via the import-progress done notice) doesn't lose the user's changes.
   ipcMain.handle('save_watch_rules', async (_e, rules: settings.WatchRule[]) => {
     const saved = settings.saveWatchRules(store, rules);
     watcher.rescan();
-    await watcher.importExisting((projectId, report) => {
-      ctx.onFactsChanged({ path: projectId, ...report });
-    });
+    try {
+      await watcher.importExisting((projectId, report) => {
+        ctx.onFactsChanged({ path: projectId, ...report });
+      });
+    } catch (e) {
+      log(`save_watch_rules 触发的存量导入失败: ${e}`);
+    }
     return saved;
   });
 
@@ -124,7 +169,9 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('pick_directory', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
-    const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] });
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0];
   });
 
@@ -135,4 +182,26 @@ export function registerIpc(ctx: IpcContext): void {
     ctx.onFactsChanged({ path: '', ...report, refreshAll: true });
     return report;
   });
+
+  // ---------- Open links in the system browser ----------
+
+  ipcMain.handle('open_external', (_e, url: string) =>
+    ok(() => {
+      if (typeof url !== 'string' || !/^https:\/\//.test(url)) {
+        throw new Error(`不允许打开的链接：${url}`);
+      }
+      shell.openExternal(url);
+    }),
+  );
+
+  // Open a local file (e.g. a memory card's source path) with its default app
+  ipcMain.handle('open_path', (_e, path: string) =>
+    ok(async () => {
+      if (typeof path !== 'string' || !path.startsWith('/')) {
+        throw new Error(`不允许打开的路径：${path}`);
+      }
+      const err = await shell.openPath(path);
+      if (err) throw new Error(err);
+    }),
+  );
 }

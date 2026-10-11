@@ -19,6 +19,7 @@ export interface ShimHandle {
 const MIN_UPSTREAM_INTERVAL_MS = 1100; // serial throttle to stay under MiniMax's RPM limit
 const RATE_LIMIT_CODES = new Set([1002]);
 const MAX_RETRIES = 5;
+const UPSTREAM_TIMEOUT_MS = 60_000; // a TCP stall must fail the request, not stall the serialized queue forever
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -37,6 +38,7 @@ export function startEmbeddingShim(apiKey: string, upstreamBase: string): Promis
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: 'embo-01', texts, type }),
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         });
         const data = await resp.json();
         if (data.base_resp?.status_code === 0) return data;
@@ -47,7 +49,9 @@ export function startEmbeddingShim(apiKey: string, upstreamBase: string): Promis
           continue;
         }
         console.error('[Knot Shim] embedding 上游错误:', data.base_resp);
-        return data; // hand the error to the caller, observable via empty vectors
+        // Fail loudly: mem0's OpenAI embedder throws on non-2xx, surfacing the
+        // failure (empty vectors would silently corrupt retrieval/ingestion).
+        throw new Error(`embedding 上游错误: ${JSON.stringify(data.base_resp ?? data)}`);
       }
     });
     queue = gate.catch(() => {});
@@ -67,7 +71,8 @@ export function startEmbeddingShim(apiKey: string, upstreamBase: string): Promis
       // Heuristic: single item = retrieval (query), multiple items = ingestion (db)
       const type = texts.length === 1 ? 'query' : 'db';
       const data = await callUpstream(texts, type);
-      const vectors: number[][] = data.vectors ?? [];
+      const vectors: number[][] = data.vectors;
+      if (!Array.isArray(vectors)) throw new Error('上游返回缺少 vectors 字段');
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
@@ -79,7 +84,9 @@ export function startEmbeddingShim(apiKey: string, upstreamBase: string): Promis
       );
     } catch (e) {
       console.error('[Knot Shim] 转换失败:', e);
-      res.writeHead(500).end(JSON.stringify({ error: { message: String(e) } }));
+      // 502: an upstream failure (mem0 retries semantics); other errors (bad
+      // request body etc.) would also land here, but 502 keeps the client retrying.
+      res.writeHead(502).end(JSON.stringify({ error: { message: String(e) } }));
     }
   });
 

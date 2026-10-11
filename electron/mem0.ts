@@ -13,6 +13,7 @@ import { Memory } from 'mem0ai/oss';
 
 import * as store from './store';
 import * as settings from './settings';
+import { log } from './log';
 import { startEmbeddingShim, type ShimHandle } from './embedding-shim';
 
 /** Ingestion behavior tuning: keep the original language, no meta info, correct old memories on conflict */
@@ -30,39 +31,83 @@ export interface IngestReport {
 let memory: Memory | null = null;
 let shim: ShimHandle | null = null;
 let currentKey: string | null = null;
+/** Single-flight guard for ensureMemory: concurrent callers (startup import vs a
+ *  live change vs a manual add) share one rebuild instead of each starting their
+ *  own embedding shim and racing over process.env.OPENAI_BASE_URL. */
+let ensurePromise: Promise<Memory | null> | null = null;
+
+/** Reject when the wrapped promise exceeds ms — without this, one hung upstream
+ *  request (TCP stall) would block the serialized ingestion queue forever. */
+// (exported for tests)
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label}超时（${Math.round(ms / 1000)}s）`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+const ADD_TIMEOUT_MS = 3 * 60_000; // LLM extraction can legitimately take a while
+const QUERY_TIMEOUT_MS = 60_000;
 
 /** Lazily initialize or rebuild the mem0 instance from settings. Returns null when unconfigured. */
 export async function ensureMemory(userDataDir: string): Promise<Memory | null> {
   const s = settings.load(store);
   if (!s.enabled || !settings.isConfigured(s)) return null;
-  if (memory && currentKey === `${s.baseUrl}|${s.apiKey}|${s.model}`) return memory;
+  const key = `${s.baseUrl}|${s.apiKey}|${s.model}`;
+  if (memory && currentKey === key) return memory;
+  if (ensurePromise) return ensurePromise;
 
   const mem0Dir = path.join(userDataDir, 'mem0');
-  if (shim) shim.close();
-  shim = await startEmbeddingShim(s.apiKey, s.baseUrl);
-  process.env.OPENAI_BASE_URL = `http://127.0.0.1:${shim.port}/v1`;
-
-  memory = new Memory({
-    llm: {
-      provider: 'minimax',
-      config: { apiKey: s.apiKey, model: s.model, baseURL: s.baseUrl, maxTokens: 4000, temperature: 0 },
-    },
-    embedder: {
-      provider: 'openai',
-      config: { apiKey: s.apiKey, model: 'embo-01', embeddingDims: 1536 },
-    },
-    vectorStore: {
-      provider: 'memory',
-      config: { collectionName: 'knot', dimension: 1536, dbPath: path.join(mem0Dir, 'vectors.db') },
-    },
-    historyStore: {
-      provider: 'sqlite',
-      config: { historyDbPath: path.join(mem0Dir, 'history.db') },
-    },
-    customInstructions: CUSTOM_INSTRUCTIONS,
+  ensurePromise = (async () => {
+    if (shim) shim.close();
+    const newShim = await startEmbeddingShim(s.apiKey, s.baseUrl);
+    try {
+      shim = newShim;
+      process.env.OPENAI_BASE_URL = `http://127.0.0.1:${newShim.port}/v1`;
+      const m = new Memory({
+        llm: {
+          provider: 'minimax',
+          config: { apiKey: s.apiKey, model: s.model, baseURL: s.baseUrl, maxTokens: 4000, temperature: 0 },
+        },
+        embedder: {
+          provider: 'openai',
+          config: { apiKey: s.apiKey, model: 'embo-01', embeddingDims: 1536 },
+        },
+        vectorStore: {
+          provider: 'memory',
+          config: { collectionName: 'knot', dimension: 1536, dbPath: path.join(mem0Dir, 'vectors.db') },
+        },
+        historyStore: {
+          provider: 'sqlite',
+          config: { historyDbPath: path.join(mem0Dir, 'history.db') },
+        },
+        customInstructions: CUSTOM_INSTRUCTIONS,
+      });
+      memory = m;
+      currentKey = key;
+      return m;
+    } catch (e) {
+      // Constructor failed: tear the new shim back down so it can't leak, and
+      // invalidate the old state (its shim is already closed, config changed anyway).
+      newShim.close();
+      shim = null;
+      memory = null;
+      currentKey = null;
+      throw e;
+    }
+  })().finally(() => {
+    ensurePromise = null;
   });
-  currentKey = `${s.baseUrl}|${s.apiKey}|${s.model}`;
-  return memory;
+  return ensurePromise;
 }
 
 export function isReady(): boolean {
@@ -80,18 +125,32 @@ export async function ingest(
   raw: string,
   meta: { agent: string; type: string; source: string },
 ): Promise<IngestReport> {
-  const m = await ensureMemory(userDataDir);
+  let m: Memory | null;
+  try {
+    m = await ensureMemory(userDataDir);
+  } catch (e) {
+    console.error('[Knot mem0] mem0 初始化失败:', e);
+    log(`mem0.ingest: mem0 初始化失败: ${e}`);
+    return { added: 0, updated: 0, deleted: 0, notice: '记忆服务初始化失败，本批记忆未入库' };
+  }
   if (!m) return { added: 0, updated: 0, deleted: 0 };
 
   const before = new Map(store.listFacts(projectId).map((f) => [f.id, f.content]));
 
   try {
-    await m.add(raw, {
-      userId: projectId,
-      metadata: { agent: meta.agent, type: meta.type, source: meta.source },
-    });
+    log(`mem0.ingest: m.add 开始（source=${meta.source}）`);
+    await withTimeout(
+      m.add(raw, {
+        userId: projectId,
+        metadata: { agent: meta.agent, type: meta.type, source: meta.source },
+      }),
+      ADD_TIMEOUT_MS,
+      'LLM 提炼',
+    );
+    log('mem0.ingest: m.add 完成');
   } catch (e) {
     console.error('[Knot mem0] 洗入失败:', e);
+    log(`mem0.ingest: m.add 失败: ${e}`);
     return { added: 0, updated: 0, deleted: 0, notice: 'LLM 提炼失败，本批记忆未入库' };
   }
 
@@ -109,18 +168,27 @@ async function syncMirror(
   const report: IngestReport = { added: 0, updated: 0, deleted: 0 };
   let all;
   try {
-    all = await m.getAll({ filters: { user_id: projectId }, topK: 10000 });
+    log(`mem0.syncMirror: getAll 开始（projectId=${projectId}）`);
+    all = await withTimeout(
+      m.getAll({ filters: { user_id: projectId }, topK: 10000 }),
+      QUERY_TIMEOUT_MS,
+      '读取记忆',
+    );
+    log(`mem0.syncMirror: getAll 返回 ${all.results.length} 条`);
   } catch (e) {
     console.error('[Knot mem0] 对账读取失败:', e);
+    log(`mem0.syncMirror: getAll 失败: ${e}`);
     return { ...report, notice: '记忆已入库，但同步本地索引失败' };
   }
 
   const afterIds = new Set<string>();
+  const contentById = new Map<string, string>();
   for (const item of all.results) {
     const id = item.id;
     const content = item.memory;
     if (!id || !content) continue;
     afterIds.add(id);
+    contentById.set(id, content);
     const itemMeta = (item.metadata ?? {}) as Record<string, string>;
     store.upsertFact({
       id,
@@ -137,14 +205,11 @@ async function syncMirror(
   }
   for (const id of afterIds) {
     if (!before.has(id)) report.added += 1;
-    else if (before.get(id) !== contentOf(all, id)) report.updated += 1;
+    else if (before.get(id) !== contentById.get(id)) report.updated += 1;
   }
   report.deleted = [...before.keys()].filter((id) => !afterIds.has(id)).length;
+  log(`mem0.syncMirror: 对账完成 added=${report.added} updated=${report.updated} deleted=${report.deleted} 镜像总数=${store.factCount(projectId)}`);
   return report;
-}
-
-function contentOf(all: { results: any[] }, id: string): string | undefined {
-  return all.results.find((r) => r.id === id)?.memory;
 }
 
 /** Manual entry / correction: write to mem0 directly (through extraction) and sync the mirror. */
@@ -156,29 +221,24 @@ export async function addManualMemory(
   return ingest(userDataDir, projectId, content, { agent: 'user', type: 'manual', source: '' });
 }
 
+/** Mirror writes only happen after mem0 succeeded — otherwise the mirror diverges
+ *  from the truth source and the next syncMirror resurrects the old content
+ *  ("deleted memories come back"). Failures propagate to the IPC caller. */
 export async function updateMemory(
   userDataDir: string,
   memoryId: string,
   content: string,
 ): Promise<void> {
-  const m = await ensureMemory(userDataDir);
-  if (!m) return;
-  try {
-    await m.update(memoryId, { text: content });
-  } catch (e) {
-    console.error('[Knot mem0] 更新失败:', e);
-  }
+  const m = (await ensureMemory(userDataDir).catch(() => memory)) ?? memory;
+  if (!m) throw new Error('LLM 提炼未启用或未配置，无法更新记忆');
+  await withTimeout(m.update(memoryId, { text: content }), ADD_TIMEOUT_MS, '更新记忆');
   store.updateFactContent(memoryId, content);
 }
 
-export async function removeMemory(memoryId: string): Promise<void> {
-  const m = memory;
+export async function removeMemory(userDataDir: string, memoryId: string): Promise<void> {
+  const m = (await ensureMemory(userDataDir).catch(() => memory)) ?? memory;
   if (m) {
-    try {
-      await m.delete(memoryId);
-    } catch (e) {
-      console.error('[Knot mem0] 删除失败:', e);
-    }
+    await withTimeout(m.delete(memoryId), QUERY_TIMEOUT_MS, '删除记忆');
   }
   store.deleteFactRow(memoryId);
 }
@@ -268,6 +328,31 @@ export async function semanticSearch(
     console.error('[Knot mem0] 语义检索失败:', e);
     throw e;
   }
+}
+
+/** Count of mem0 memories for a project attributed to a given agent. Reads the
+ *  truth source, so it survives mirror wipes (project removed & re-added) — used
+ *  to detect "guided import already ran" without burning LLM calls again. */
+export async function memoryCountByAgent(projectId: string, agent: string): Promise<number> {
+  const m = memory;
+  if (!m) return 0;
+  try {
+    const all = await m.getAll({ filters: { user_id: projectId }, topK: 10000 });
+    return all.results.filter((x) => ((x.metadata ?? {}) as Record<string, string>).agent === agent)
+      .length;
+  } catch (e) {
+    console.error('[Knot mem0] 迁移检查读取失败:', e);
+    log(`mem0.memoryCountByAgent 失败: ${e}`);
+    return 0;
+  }
+}
+
+/** Restore the mirror store straight from mem0 (no LLM): the inverse of a mirror
+ *  wipe. Returns the diff report relative to the (empty) mirror. */
+export async function restoreMirror(projectId: string): Promise<IngestReport> {
+  const m = memory;
+  if (!m) return { added: 0, updated: 0, deleted: 0 };
+  return syncMirror(m, projectId, { agent: 'unknown', type: 'local-memory', source: '' }, new Map());
 }
 
 export function shutdown(): void {

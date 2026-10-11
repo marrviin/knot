@@ -33,6 +33,12 @@ let db: Database.Database | null = null;
 
 export type Db = Database.Database;
 
+/** Virtual project that owns every agent's global (non-project-scoped) memories,
+ *  e.g. hermes's profile-wide ~/.hermes/memories/. A reserved path that can never
+ *  collide with a real directory; pinned first in listProjects and not removable. */
+export const GLOBAL_PROJECT = '__global__';
+export const GLOBAL_PROJECT_NAME = '全局记忆';
+
 export function dbPath(userDataDir: string): string {
   return path.join(userDataDir, 'knot.db');
 }
@@ -54,6 +60,7 @@ export function open(userDataDir: string): Database.Database {
   db = new Database(dbPath(userDataDir));
   db.pragma('journal_mode = WAL');
   initSchema(db);
+  ensureGlobalProject(db);
   return db;
 }
 
@@ -88,6 +95,13 @@ function initSchema(conn: Database.Database): void {
   `);
 }
 
+/** Idempotently create the global-memory virtual project (guarded in removeProject) */
+function ensureGlobalProject(conn: Database.Database): void {
+  conn
+    .prepare('INSERT OR IGNORE INTO projects (path, name, added_at) VALUES (?, ?, ?)')
+    .run(GLOBAL_PROJECT, GLOBAL_PROJECT_NAME, now());
+}
+
 export function now(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -103,14 +117,16 @@ export function listProjects(): Project[] {
     .prepare(
       `SELECT p.path, p.name, COUNT(f.id) AS cnt, MAX(f.updated_at) AS last
        FROM projects p LEFT JOIN facts f ON f.project_id = p.path
-       GROUP BY p.path, p.name ORDER BY p.added_at`,
+       GROUP BY p.path, p.name
+       ORDER BY CASE WHEN p.path = '${GLOBAL_PROJECT}' THEN 0 ELSE 1 END, p.added_at`,
     )
     .all() as any[];
   return rows.map((r) => ({
     path: r.path,
     name: r.name,
     factCount: r.cnt,
-    lastUpdated: r.last ?? null,
+    // DB stores second-level timestamps; convert to ms for the UI (same as rowToFact)
+    lastUpdated: r.last != null ? r.last * 1000 : null,
   }));
 }
 
@@ -123,9 +139,15 @@ export function insertProject(p: string): boolean {
 }
 
 export function removeProject(p: string): void {
+  if (p === GLOBAL_PROJECT) return; // virtual project: not removable
   const conn = get();
   conn.prepare('DELETE FROM facts WHERE project_id = ?').run(p);
   conn.prepare('DELETE FROM projects WHERE path = ?').run(p);
+  // Guided-import markers are keyed per project — leaving them behind would make
+  // re-adding the project skip its existing-content import forever.
+  conn
+    .prepare("DELETE FROM settings WHERE key LIKE 'bootstrap_done:%' AND key LIKE '%' || ?")
+    .run(`:${p}`);
 }
 
 export function projectExists(p: string): boolean {
@@ -142,13 +164,23 @@ export function normalize(text: string): string {
     .replace(/[.。!！?？]+$/, '');
 }
 
-/** mem0 ADD event → persist to the mirror (returns whether newly inserted) */
+/** mem0 ADD/UPDATE event → persist to the mirror. True upsert: mem0's conflict
+ *  adjudication rewrites an existing memory's content in place (same uuid), so an
+ *  INSERT OR IGNORE here would leave the mirror permanently stale. */
 export function upsertFact(fact: Omit<Fact, 'createdAt' | 'updatedAt'>): boolean {
   const ts = now();
   const n = get()
     .prepare(
-      `INSERT OR IGNORE INTO facts (id, project_id, content, norm_key, agent, type, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO facts (id, project_id, content, norm_key, agent, type, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         project_id = excluded.project_id,
+         content = excluded.content,
+         norm_key = excluded.norm_key,
+         agent = excluded.agent,
+         type = excluded.type,
+         source = excluded.source,
+         updated_at = excluded.updated_at`,
     )
     .run(fact.id, fact.projectId, fact.content, normalize(fact.content), fact.agent, fact.type, fact.source, ts, ts);
   return n.changes > 0;
@@ -194,35 +226,47 @@ export function factCount(projectId: string): number {
   return row.c;
 }
 
-/** Count of facts produced by a given agent within a project (for guided-import migration checks) */
-export function factCountByAgent(projectId: string, agent: string): number {
-  const row = get()
-    .prepare('SELECT COUNT(*) AS c FROM facts WHERE project_id = ? AND agent = ?')
-    .get(projectId, agent) as { c: number };
-  return row.c;
+/** Resolve a project for MCP retrieval: full path first (exact match, or anything
+ *  inside a registered project — longest prefix wins), then project name as a
+ *  fallback. Path-first resolution keeps two same-named projects from reading
+ *  each other's memories. Returns the registered project path, or null. */
+export function resolveProject(idOrPath: string): string | null {
+  const rows = projectRows();
+  const exact = rows.find((r) => r.path === idOrPath);
+  if (exact) return exact.path;
+  const inside = rows
+    .filter((r) => r.path !== GLOBAL_PROJECT && idOrPath.startsWith(r.path + path.sep))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  if (inside) return inside.path;
+  return rows.find((r) => r.name === idOrPath)?.path ?? null;
 }
 
 /** Score and rank a project's facts by keyword (keyword hits + recency) for MCP search.
- *  When no keyword matches, fall back to returning everything (recency-truncated) —
- *  semantic matching by the downstream model is far more reliable than substring hits.
- *  project_id accepts a full path or a project name. */
+ *  With a query, only actual keyword hits are returned (an empty result is honest —
+ *  handing back unrelated recent memories labeled as matches erodes trust). Without a
+ *  query, return the most recent memories (the tool's documented "fetch latest" mode).
+ *  projectId must be a resolved registered project path (see resolveProject). */
 export function searchFacts(projectId: string, query?: string): Fact[] {
   const rows = get()
     .prepare(
       `SELECT ${FACT_COLUMNS.replace(/(^|,)\s*/g, '$1f.')}
-       FROM facts f LEFT JOIN projects p ON p.path = f.project_id
-       WHERE f.project_id = ? OR p.name = ?
+       FROM facts f
+       WHERE f.project_id = ?
        ORDER BY f.updated_at DESC`,
     )
-    .all(projectId, projectId) as any[];
+    .all(projectId) as any[];
   const all = rows.map(rowToFact);
 
+  // Single CJK characters are meaningful queries; require 2+ only for latin words
   const keywords = (query ?? '')
     .split(/\s+/)
-    .filter((k) => [...k].length >= 2)
+    .filter((k) => k && (/[一-鿿]/.test(k) || [...k].length >= 2))
     .map((k) => k.toLowerCase());
 
-  if (keywords.length === 0) return all.slice(0, 30);
+  // No query = documented fetch-latest mode (recent memories). A query whose every
+  // token was filtered out must yield an honest empty result, not the recent list
+  // dressed up as matches.
+  if (keywords.length === 0) return query ? [] : all.slice(0, 30);
 
   const scored = all
     .map((f) => {
@@ -231,7 +275,6 @@ export function searchFacts(projectId: string, query?: string): Fact[] {
       return { hits, f };
     })
     .filter((x) => x.hits > 0);
-  if (scored.length === 0) return all.slice(0, 30);
   scored.sort((a, b) => b.hits - a.hits || b.f.updatedAt - a.f.updatedAt);
   return scored.slice(0, 20).map((x) => x.f);
 }
@@ -249,6 +292,10 @@ export function setSetting(key: string, value: string): void {
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     )
     .run(key, value);
+}
+
+export function deleteSetting(key: string): void {
+  get().prepare('DELETE FROM settings WHERE key = ?').run(key);
 }
 
 /** Whether the legacy Tauri database is usable (exists and has facts) */

@@ -20,6 +20,8 @@ import {
   Input,
   Masonry,
   Menu,
+  Progress,
+  Spin,
   Tag,
 } from "antd";
 import type { MenuProps } from "antd";
@@ -29,19 +31,23 @@ import {
   DeleteOutlined,
   EllipsisOutlined,
   FolderOutlined,
+  GlobalOutlined,
   LoadingOutlined,
   PlusOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import * as api from "./api";
 import knotIllustration from "./assets/knot.png";
-import type { Fact, Project } from "./types";
+import type { Fact, ImportProgress, Project } from "./types";
 import { menuSkinTheme } from "./menu-skin";
 import { SettingsModal } from "./settings-modal";
 import { InlineMd } from "./inline-md";
 import { MarqueeLabel } from "./marquee-label";
 
 type Notify = (message: string, type?: "info" | "error") => void;
+
+/** Import progress plus the file names ingested so far (drives the header file carousel) */
+type ImportState = ImportProgress & { files: string[] };
 
 export default function App() {
   return (
@@ -90,6 +96,12 @@ function Shell() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Ongoing existing-content imports, keyed by project path (drives the header
+  // progress ring + file carousel in FactPanel)
+  const [imports, setImports] = useState<Record<string, ImportState>>({});
+  // Last project path a facts load completed for — `!== activePath` means loading
+  // (a plain boolean would flicker on the per-file facts-changed storm during import)
+  const [factsLoadedPath, setFactsLoadedPath] = useState<string | null>(null);
   // Startup restore: read "last opened project" once after the project list first loads
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -113,11 +125,22 @@ function Shell() {
       .catch((e) => notify(`加载项目失败: ${e}`, "error"));
   }, [notify]);
 
+  // Request sequence guard: during an import storm (facts-changed per file) the user
+  // can switch projects — a late response for the old project must not overwrite the
+  // new project's facts (stale data shown under the wrong panel header).
+  const factsReqRef = useRef(0);
   const reloadFacts = useCallback((path: string) => {
+    const seq = ++factsReqRef.current;
     api
       .listFacts(path)
-      .then(setFacts)
-      .catch(() => setFacts([]));
+      .then((f) => {
+        if (seq !== factsReqRef.current) return;
+        setFacts(f);
+        setFactsLoadedPath(path);
+      })
+      .catch(() => {
+        if (seq === factsReqRef.current) setFacts([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -163,13 +186,48 @@ function Shell() {
     );
   }, [notify, reloadFacts, reloadProjects, activePath]);
 
-  // New Claude Code projects auto-discovered
+  // Import progress: header ring + file carousel in the importing project's panel
+  // + summary toasts. State lives in Shell — FactPanel remounts on project switch
+  // (key={active.path}), so the accumulated file list survives the remount.
   useEffect(() => {
-    return window.knot.listen("knot://projects-changed", () => {
-      reloadProjects();
-      notify("发现新的 Claude Code 项目，已自动接管监听");
+    return window.knot.listen("knot://import-progress", (p: ImportProgress) => {
+      if (p.phase === "start") {
+        setImports((m) => ({ ...m, [p.project]: { ...p, files: [] } }));
+      } else if (p.phase === "file") {
+        // Ignore late events whose start was never seen (missed event / cleared state)
+        setImports((m) => {
+          const cur = m[p.project];
+          if (!cur) return m;
+          return {
+            ...m,
+            [p.project]: {
+              ...cur,
+              ...p,
+              // The same file can be matched by several cards — show it once
+              files: p.file && !cur.files.includes(p.file) ? [...cur.files, p.file] : cur.files,
+            },
+          };
+        });
+      } else {
+        setImports((m) => {
+          if (!(p.project in m)) return m;
+          const { [p.project]: _drop, ...rest } = m;
+          return rest;
+        });
+        if (p.notice) {
+          notify(p.notice, "error");
+        } else if (
+          p.report &&
+          p.report.added + p.report.updated + p.report.deleted > 0
+        ) {
+          notify(
+            `存量导入完成：新增 ${p.report.added}，更新 ${p.report.updated}` +
+              (p.report.deleted ? `，删除 ${p.report.deleted}` : ""),
+          );
+        }
+      }
     });
-  }, [notify, reloadProjects]);
+  }, [notify]);
 
   const addProjectByPath = useCallback(
     async (path: string) => {
@@ -221,34 +279,36 @@ function Shell() {
   // never bubble up here).
   const projectItems: MenuProps["items"] = projects.map((p) => ({
     key: p.path,
-    icon: <FolderOutlined />,
+    icon: p.path === api.GLOBAL_PROJECT ? <GlobalOutlined /> : <FolderOutlined />,
     label: (
       <span className="flex w-full min-w-0 items-center">
         <MarqueeLabel className="w-auto flex-[1_1_auto]" text={p.name} />
         <span className="pc-menu-meta">{p.factCount}</span>
-        <Dropdown
-          trigger={["click"]}
-          placement="bottomRight"
-          menu={{
-            items: [
-              {
-                key: "remove",
-                danger: true,
-                icon: <DeleteOutlined />,
-                label: "移除项目",
+        {p.path !== api.GLOBAL_PROJECT && (
+          <Dropdown
+            trigger={["click"]}
+            placement="bottomRight"
+            menu={{
+              items: [
+                {
+                  key: "remove",
+                  danger: true,
+                  icon: <DeleteOutlined />,
+                  label: "移除项目",
+                },
+              ],
+              onClick: ({ key, domEvent }) => {
+                domEvent.stopPropagation();
+                if (key === "remove") void removeProject(p);
               },
-            ],
-            onClick: ({ key, domEvent }) => {
-              domEvent.stopPropagation();
-              if (key === "remove") void removeProject(p);
-            },
-          }}
-        >
-          <EllipsisOutlined
-            className="pc-menu-more"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </Dropdown>
+            }}
+          >
+            <EllipsisOutlined
+              className="pc-menu-more"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        )}
       </span>
     ),
   }));
@@ -269,15 +329,10 @@ function Shell() {
 
           {/* Brand area: below the light zone, not sharing its band; click returns home (clears the selected project) */}
           <div
-            className="flex shrink-0 cursor-pointer items-center gap-2 px-4 pb-3 transition-opacity hover:opacity-70"
+            className="flex shrink-0 cursor-pointer items-center gap-2 px-4 pb-3"
             onClick={() => setActivePath(null)}
             title="回到首页"
           >
-            {/* <img
-              src={appIcon}
-              alt="Knot icon"
-              className="h-10 w-10 shrink-0 select-none"
-            /> */}
             <div className="min-w-0">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-[16px] leading-tight font-semibold text-fg">
@@ -315,10 +370,8 @@ function Shell() {
           </div>
 
           {projects.length === 0 ? (
-            <div className="shrink-0 px-4 py-6 text-center text-xs leading-5 text-muted">
-              正在自动扫描 Claude Code 项目…
-              <br />
-              也可以把目录拖进窗口手动添加
+            <div className="shrink-0 pt-6">
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={null} />
             </div>
           ) : (
             <ConfigProvider theme={menuSkinTheme}>
@@ -354,6 +407,8 @@ function Shell() {
             key={active.path}
             project={active}
             facts={facts}
+            importing={imports[active.path] ?? null}
+            loading={factsLoadedPath !== active.path}
             onNotify={notify}
           />
         ) : (
@@ -383,10 +438,16 @@ function Shell() {
 function FactPanel({
   project,
   facts,
+  importing,
+  loading,
   onNotify,
 }: {
   project: Project;
   facts: Fact[];
+  /** Ongoing existing-content import for this project (null = none) */
+  importing: Pick<ImportState, "current" | "total" | "files"> | null;
+  /** Facts for this project not loaded yet (avoids flashing Empty on switch) */
+  loading: boolean;
   onNotify: Notify;
 }) {
   const [query, setQuery] = useState("");
@@ -444,15 +505,59 @@ function FactPanel({
             ))}
             <Tag className="m-0">{facts.length} 条记忆</Tag>
           </div>
-          {/* mem0 semantic search: debounced input triggers automatically */}
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="输入关键词搜索"
-            className="w-72 shrink-0"
-            allowClear
-            suffix={searching ? <LoadingOutlined spin /> : undefined}
-          />
+          {importing ? (
+            /* Import in progress: ring progress + a vertical file roll,
+                replacing the search box while it runs */
+            <div className="flex h-8 shrink-0 items-center gap-3">
+              <Progress
+                type="circle"
+                percent={
+                  importing.total > 0
+                    ? Math.round((importing.current / importing.total) * 100)
+                    : 0
+                }
+                size={22}
+                format={() => ""}
+              />
+              {/* Simple translateY roll: antd Carousel drops rapid goTo calls
+                  while animating (waitForAnimate), so files pile up unshown */}
+              <div className="h-8 w-56 overflow-hidden" aria-live="polite">
+                {(importing.files.length > 0
+                  ? importing.files
+                  : [`共 ${importing.total} 个文件，等待提炼…`]
+                ).map((file, i) => (
+                  <div
+                    key={`${i}-${file}`}
+                    className="flex h-8 items-center justify-end gap-1.5 text-xs text-muted transition-transform duration-300 ease-out"
+                    style={{
+                      transform: `translateY(-${
+                        Math.max(0, (importing.files.length || 1) - 1) * 32
+                      }px)`,
+                    }}
+                  >
+                    <span className="shrink-0 font-mono tabular-nums">
+                      {importing.files.length > 0
+                        ? `${i + 1}/${importing.total}`
+                        : `0/${importing.total}`}
+                    </span>
+                    <span className="truncate font-mono">
+                      {file.split("/").pop()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* mem0 semantic search: debounced input triggers automatically */
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="输入关键词搜索"
+              className="w-72 shrink-0"
+              allowClear
+              suffix={searching ? <LoadingOutlined spin /> : undefined}
+            />
+          )}
         </div>
         {watchAgents.length === 0 && (
           <p className="mt-1 mb-0 truncate text-xs text-muted">
@@ -523,12 +628,20 @@ function FactPanel({
                 children: <FactCard fact={fact} />,
               }))}
             />
-            {facts.length === 0 && (
+            {facts.length === 0 && loading && (
               <div className="flex h-full items-center justify-center">
+                <Spin />
+              </div>
+            )}
+            {facts.length === 0 && !loading && (
+              <div className="flex h-full flex-col items-center justify-center gap-2">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={false}
                 />
+                {importing && (
+                  <span className="text-xs text-muted">存量记忆导入中…</span>
+                )}
               </div>
             )}
           </>
@@ -632,6 +745,7 @@ function FactMeta({
     agent ? (AGENT_LABELS[agent] ?? agent) : null,
     type ? (TYPE_LABELS[type] ?? type) : null,
   ].filter(Boolean);
+  const { message } = AntdApp.useApp();
   return (
     <div className="mt-3 min-w-0 text-[11px] text-muted">
       <div className="flex items-center justify-between gap-2">
@@ -639,7 +753,15 @@ function FactMeta({
         {time && <span className="shrink-0 whitespace-nowrap">{time}</span>}
       </div>
       {source && (
-        <div className="mt-1 font-mono text-[10px]" title={shortenPath(source)}>
+        <div
+          className="mt-1 cursor-pointer font-mono text-[10px] transition-colors hover:text-fg"
+          title={`${shortenPath(source)}（点击打开文件）`}
+          onClick={() => {
+            api.openPath(source).catch((e) => {
+              message.error(`打开文件失败: ${e?.message ?? e}`);
+            });
+          }}
+        >
           <MiddlePath text={shortenPath(source)} />
         </div>
       )}

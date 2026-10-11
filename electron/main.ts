@@ -1,6 +1,6 @@
 //! Electron main process entry.
 //! - `knot --mcp-server`: headless stdio MCP server (spawned by Claude Code)
-//! - Default: GUI main window + file watching + auto discovery + mem0 integration
+//! - Default: GUI main window + file watching + mem0 integration
 
 import { app, BrowserWindow, Menu, nativeImage, Tray } from 'electron';
 import path from 'node:path';
@@ -8,17 +8,24 @@ import path from 'node:path';
 import * as store from './store';
 import * as mem0 from './mem0';
 import * as watcher from './watcher';
-import { discoverClaudeProjects } from './discover';
+import { initLog, log } from './log';
 import { registerIpc } from './ipc';
 import { runMcpServer } from './mcp-server';
 
 if (process.argv.includes('--mcp-server')) {
+  // stdout is the JSON-RPC transport: a stray console.log (ours or a dependency's)
+  // would corrupt the stream — route everything to stderr before anything can log.
+  console.log = console.error;
+  console.info = console.error;
+  console.debug = console.error;
   app.whenReady().then(() => {
     store.open(app.getPath('userData'));
     runMcpServer();
   });
 } else {
-  void startGui();
+  void startGui().catch((e) => {
+    console.error('[Knot] GUI 启动失败:', e);
+  });
 }
 
 /** Tray icon and main window references; `quitting` distinguishes Cmd+Q/tray quit from clicking the close button */
@@ -62,9 +69,13 @@ async function startGui(): Promise<void> {
     },
   });
 
-  // Traffic lights/close button → hide to tray instead of quitting; Cmd+Q or tray "Quit" actually quits
+  // Traffic lights/close button → hide to tray instead of quitting; Cmd+Q or tray "Quit" actually quits.
+  // Real quit paths (Cmd+Q / tray / app.quit) all run through before-quit — the only
+  // place reachable in tray mode — so watcher/shutdown cleanup lives here.
   app.on('before-quit', () => {
     appQuitting = true;
+    watcher.unwatchAll();
+    mem0.shutdown();
   });
   win.on('close', (e) => {
     if (!appQuitting) {
@@ -81,15 +92,24 @@ async function startGui(): Promise<void> {
 
   const userDataDir = app.getPath('userData');
   store.open(userDataDir);
+  initLog(userDataDir);
+  log('GUI 启动');
+  // mem0 awaits a telemetry report (posthog) on add/getAll — unreachable network
+  // hangs the import loop; disable it entirely.
+  process.env.MEM0_TELEMETRY = 'false';
   migrateLegacySettings();
   watcher.setUserDataDir(userDataDir);
 
   const onFactsChanged = (payload: Record<string, unknown>) => {
-    win.webContents.send('knot://facts-changed', payload);
+    if (!win.isDestroyed()) win.webContents.send('knot://facts-changed', payload);
+  };
+  const sendImportProgress = (p: watcher.ImportProgress) => {
+    if (!win.isDestroyed()) win.webContents.send('knot://import-progress', p);
   };
   watcher.setIngestListener((projectId, report) => {
     onFactsChanged({ path: projectId, ...report });
   });
+  watcher.setImportListener(sendImportProgress);
 
   registerIpc({ userDataDir, onFactsChanged });
 
@@ -100,30 +120,30 @@ async function startGui(): Promise<void> {
     await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
-  // Lazily initialize mem0 (connect only when configured), then resume watching + auto discovery
+  // Lazily initialize mem0 (connect only when configured), then resume watching
+  // and one-time import of existing content for the already-registered projects.
+  // Projects are added manually (picker / drag-drop via add_project IPC).
   void (async () => {
-    await mem0.ensureMemory(userDataDir);
-
-    watcher.rescan();
-
-    const discoverLoop = async () => {
-      let discoveredNew = false;
-      for (const p of discoverClaudeProjects()) {
-        if (store.insertProject(p)) {
-          console.log('[Knot Discover] 自动接管项目', p);
-          discoveredNew = true;
-        }
-      }
-      if (discoveredNew) {
-        win.webContents.send('knot://projects-changed', null);
-        watcher.rescan();
-      }
+    try {
+      await mem0.ensureMemory(userDataDir);
+      watcher.rescan();
       await watcher.importExisting((projectId, report) => {
         onFactsChanged({ path: projectId, ...report });
       });
-    };
-    void discoverLoop();
-    setInterval(() => void discoverLoop(), 60_000);
+    } catch (e) {
+      // A failed startup chain must never silently kill watching + importing:
+      // surface it through the import-progress done notice (shown as a toast).
+      log(`启动初始化失败: ${e}`);
+      sendImportProgress({
+        project: '',
+        ruleId: '',
+        phase: 'done',
+        current: 0,
+        total: 0,
+        report: { added: 0, updated: 0, deleted: 0 },
+        notice: `启动初始化失败，监听与导入已暂停: ${e}`,
+      });
+    }
   })();
 
   app.on('window-all-closed', () => {

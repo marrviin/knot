@@ -37,15 +37,22 @@ function readConfig(p: string): Record<string, any> {
   }
 }
 
+/** Atomic write (temp file + rename): a crash mid-write must never truncate
+ *  ~/.claude.json, and rename avoids the read-modify-write window clobbering a
+ *  concurrent update from Claude Code itself with a torn file. */
 function writeConfig(p: string, value: Record<string, any>): void {
-  fs.writeFileSync(p, JSON.stringify(value, null, 2) + '\n');
+  const tmp = `${p}.knot-tmp-${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n');
+  fs.renameSync(tmp, p);
+}
+
+function backup(p: string): void {
+  if (fs.existsSync(p)) fs.copyFileSync(p, p + '.knot-backup');
 }
 
 export function inject(): string {
   const p = configPath();
-  if (fs.existsSync(p)) {
-    fs.copyFileSync(p, p + '.knot-backup');
-  }
+  backup(p);
   const config = readConfig(p);
   if (!config.mcpServers || typeof config.mcpServers !== 'object') {
     config.mcpServers = {};
@@ -59,6 +66,7 @@ export function remove(): string {
   const p = configPath();
   const config = readConfig(p);
   if (config.mcpServers && typeof config.mcpServers === 'object' && SERVER_KEY in config.mcpServers) {
+    backup(p);
     delete config.mcpServers[SERVER_KEY];
     writeConfig(p, config);
     return '已解绑 Knot 记忆总线，重启 Claude Code 后生效。';

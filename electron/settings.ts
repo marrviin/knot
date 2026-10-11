@@ -53,7 +53,14 @@ export function save(
   s.setSetting('llm_enabled', enabled ? '1' : '0');
   s.setSetting('llm_base_url', baseUrl.trim() || DEFAULT_BASE_URL);
   s.setSetting('llm_model', model.trim() || DEFAULT_MODEL);
-  if (apiKey && apiKey.trim()) s.setSetting('llm_api_key', apiKey.trim());
+  // null = keep the stored key (field untouched); '' = explicit clear; non-empty = replace
+  if (apiKey === null) {
+    // keep
+  } else if (apiKey.trim()) {
+    s.setSetting('llm_api_key', apiKey.trim());
+  } else {
+    s.deleteSetting('llm_api_key');
+  }
 }
 
 // ---------- Memory watch rules ----------
@@ -73,11 +80,27 @@ export interface WatchRule {
   enabled: boolean;
   /** Builtin default card (path locked, auto-restored when missing; can only be toggled, not deleted/retargeted) */
   builtin?: boolean;
+  /** Basenames treated as catalogs of memory entries and never ingested.
+   *  Default ['MEMORY.md'] (claude-code's auto-memory index); set to [] for agents
+   *  whose MEMORY.md is the memory body itself (hermes). Config-managed per card —
+   *  no hardcoded per-agent exceptions in the watcher. */
+  indexFiles?: string[];
 }
 
-/** Default cards for common local agents (codex/hermes have no prevailing directory
- *  convention yet, so they're preset as in-project dot directories and disabled by
- *  default; users can add custom cards when the presets don't fit) */
+export const DEFAULT_INDEX_FILES = ['MEMORY.md'];
+
+/** Skip set for a card's catalog files (per-card config, with the shared default) */
+export function indexFilesOf(rule: WatchRule): Set<string> {
+  return new Set(rule.indexFiles ?? DEFAULT_INDEX_FILES);
+}
+
+/** Default cards for common local agents. claude-code keeps per-project auto-memory
+ *  under ~/.claude/projects/<slug>/memory/; hermes has no per-project memory — its
+ *  built-in memory bank is profile-global (~/.hermes/memories/MEMORY.md + USER.md),
+ *  so its entry is absolute and attributes to the global-memory virtual project.
+ *  codex has no prevailing directory convention yet, so it's preset as an in-project
+ *  dot directory and disabled by default; users can add custom cards when the
+ *  presets don't fit. */
 export const DEFAULT_WATCH_RULES: WatchRule[] = [
   {
     id: 'claude-code',
@@ -87,13 +110,22 @@ export const DEFAULT_WATCH_RULES: WatchRule[] = [
     builtin: true,
   },
   { id: 'codex', agent: 'codex', match: '.codex/memory/*.md', enabled: false, builtin: true },
-  { id: 'hermes', agent: 'hermes', match: '.hermes/memory/*.md', enabled: false, builtin: true },
+  {
+    id: 'hermes',
+    agent: 'hermes',
+    match: '~/.hermes/memories/*.md',
+    indexFiles: [], // MEMORY.md is hermes's memory body (§-delimited entries), not an index
+    enabled: false,
+    builtin: true,
+  },
   { id: 'joycode', agent: 'joycode', match: '.joycode/memory/*.md', enabled: true, builtin: true },
 ];
 
 const WATCH_KEY = 'watch_rules';
 
-/** Load watch rules: converts legacy data (path+pattern) into match expressions; auto-restores missing builtin cards */
+/** Load watch rules: converts legacy data (path+pattern) into match expressions;
+ *  builtin cards follow the app version (match/agent/indexFiles forced to the preset,
+ *  only the toggle stays user-owned); missing builtin cards are auto-restored. */
 export function loadWatchRules(s: typeof store): WatchRule[] {
   const raw = s.getSetting(WATCH_KEY);
   let rules: WatchRule[] = [];
@@ -117,14 +149,26 @@ export function loadWatchRules(s: typeof store): WatchRule[] {
             match,
             enabled: r.enabled ?? true,
             builtin: !!r.builtin,
+            indexFiles: Array.isArray(r.indexFiles)
+              ? r.indexFiles.filter((x: unknown): x is string => typeof x === 'string')
+              : undefined,
           };
-        })
-        .filter((r) => r.match);
+        });
+        // An empty match is kept: it's a card mid-edit, and dropping it here would
+        // make the next save silently delete the user's card (it just matches nothing).
     } catch {
-      rules = []; // On corrupted data, run with builtin defaults only; never overwrite what the user stored
+      // Corrupted stored JSON: run with builtin defaults, but keep a one-time backup
+      // so the user's custom cards survive when this (builtin-only) state gets saved back.
+      if (raw) s.setSetting(`${WATCH_KEY}_corrupt_backup`, raw);
+      rules = [];
     }
   }
   const presetIds = new Set(DEFAULT_WATCH_RULES.map((r) => r.id));
+  const presets = new Map(DEFAULT_WATCH_RULES.map((r) => [r.id, r]));
+  rules = rules.map((r) => {
+    const preset = r.builtin ? presets.get(r.id) : undefined;
+    return preset ? { ...r, match: preset.match, agent: preset.agent, indexFiles: preset.indexFiles } : r;
+  });
   const have = new Set(rules.map((r) => r.id));
   for (const preset of DEFAULT_WATCH_RULES) {
     if (!have.has(preset.id)) rules.push({ ...preset });
@@ -135,13 +179,16 @@ export function loadWatchRules(s: typeof store): WatchRule[] {
 
 export function saveWatchRules(s: typeof store, rules: WatchRule[]): WatchRule[] {
   const cleaned = (Array.isArray(rules) ? rules : [])
-    .filter((r) => r && typeof r.match === 'string' && r.match.trim())
+    // Empty-match rules are kept on purpose: dropping them here silently deletes a
+    // card the user is mid-edit on (persist fires on blur). They simply match nothing.
+    .filter((r) => r && typeof r.match === 'string')
     .map((r) => ({
       id: typeof r.id === 'string' && r.id ? r.id : `watch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       agent: (r.agent ?? '').trim() || 'custom',
       match: r.match.trim(),
       enabled: r.enabled !== false,
       builtin: !!r.builtin,
+      ...(Array.isArray(r.indexFiles) ? { indexFiles: r.indexFiles } : {}),
     }));
   s.setSetting(WATCH_KEY, JSON.stringify(cleaned));
   return cleaned;
