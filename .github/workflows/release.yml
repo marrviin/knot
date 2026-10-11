@@ -27,6 +27,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 测试在 ELECTRON_RUN_AS_NODE 下跑，better-sqlite3 需切到 Electron ABI
+      # （electron-builder 打包时会再做一次 @electron/rebuild，互不影响）
+      - name: Rebuild better-sqlite3 for Electron
+        run: pnpm rebuild:electron
+
       - name: Test
         run: pnpm test
 
