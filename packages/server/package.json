@@ -1,0 +1,27 @@
+{
+  "name": "@knot/server",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Knot 记忆服务：mem0 抽取/检索 + 向量库持久化，独立于 Electron 部署（本地子进程或远程 Docker）",
+  "main": "dist-server/index.cjs",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "rm -rf dist-server && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist-server/index.cjs --external:better-sqlite3 --external:mem0ai"
+  },
+  "dependencies": {
+    "@fastify/sensible": "^6.0.7",
+    "@knot/shared": "workspace:*",
+    "@sinclair/typebox": "^0.34.52",
+    "better-sqlite3": "^12.4.1",
+    "fastify": "^5.0.0",
+    "mem0ai": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24",
+    "esbuild": "^0.25",
+    "tsx": "^4",
+    "typescript": "^5.6.0"
+  }
+}

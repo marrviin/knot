@@ -1,0 +1,30 @@
+{
+  "name": "@knot/web",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Knot 渲染层（React + antd + Vite），构建产物直接输出到 @knot/desktop/dist 供打包",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ant-design/cssinjs": "^2.1.2",
+    "@ant-design/icons": "^6.3.2",
+    "@knot/shared": "workspace:*",
+    "antd": "^6.6.2",
+    "classnames": "^2.5.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

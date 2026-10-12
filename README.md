@@ -14,14 +14,14 @@ Custom agent --low-frequency overwrite--> .myagent/mem.json
                                               ▼
    Knot desktop: mem0 refinement pipeline (fact extraction → semantic dedup → conflict resolution)
                 + SQLite mirror store + white-box fact board
-                                              │ --mcp-server (Stdio JSON-RPC)
+                                              │ local HTTP MCP server (http://127.0.0.1:27183/mcp)
                                               ▼
-        Claude Code --MCP tool fetch_project_knot--> pull shared memory
+        Claude Code --MCP tool recall_memories--> pull shared memory
 ```
 
-- **Ingest**: chokidar watches `.myagent/mem.json` in every registered project; raw text is handed to mem0 for refinement (fact extraction, semantic dedup, new-vs-old conflict resolution). LLM is the MiniMax family (user-supplied API key, can be disabled — when disabled, new memories are not auto-ingested); embeddings use MiniMax embo-01 via a local translation shim.
+- **Ingest**: chokidar watches `.myagent/mem.json` in every registered project; raw text is handed to mem0 for refinement (fact extraction, semantic dedup, new-vs-old conflict resolution). LLM + embeddings via MiniMax or any OpenAI-compatible service (user-supplied API key; MiniMax embeddings go through a local format-translation shim).
 - **Storage**: mem0's built-in SQLite vector store (`<userData>/mem0/vectors.db`) is the source of truth; a `knot.db` mirror serves the UI board and MCP keyword search, linked by memory uuid.
-- **Output**: run with `--mcp-server` and the process becomes a Stdio MCP Server exposing `fetch_project_knot` / `list_knot_projects`.
+- **Output**: the running app hosts a local HTTP MCP server (`http://127.0.0.1:27183/mcp`, port overridable via `KNOT_MCP_PORT`) exposing `recall_memories` / `list_projects`; a headless stdio mode (`--mcp-server`) remains as a fallback. Retrieval is hybrid: FTS5 BM25 keyword search fused with mem0 semantic vector search via RRF (source-labeled results; degrades to pure BM25 when no LLM service is configured).
 - **Board**: white-box fact cards with manual add/edit/delete (changes sync back to mem0), preventing memory divergence between agents.
 
 ## Development
@@ -36,15 +36,14 @@ pnpm rebuild:electron  # rebuild better-sqlite3 for Electron ABI only
 Requires Node ≥ 20 (pnpm). Packaging via electron-builder is not configured yet (planned).
 
 Note: if your terminal has `ELECTRON_RUN_AS_NODE=1` set (common in the VS Code integrated terminal),
-start with `env -u ELECTRON_RUN_AS_NODE`. The MCP config injected into Claude Code already
-wraps the command in a shell that unsets the variable.
+start with `env -u ELECTRON_RUN_AS_NODE`.
 
 ## Usage
 
 1. Drag a project folder into the window (or click "Add Project") — Knot starts watching `.myagent/mem.json` inside it;
 2. Fill in your MiniMax API key under refinement settings and enable LLM refinement;
-3. Click "Activate Claude Code memory" — Knot registers itself into the `mcpServers` key of `~/.claude.json` (auto-backup before writing);
-4. Restart Claude Code; at the start of a new task, call `fetch_project_knot` to pull the memory left behind by previous agents.
+3. Click "Activate Claude Code memory" — Knot registers an HTTP entry (`http://127.0.0.1:27183/mcp`) into the `mcpServers` key of `~/.claude.json` (auto-backup before writing);
+4. Restart Claude Code; at the start of a new task, call `recall_memories` to pull the memory left behind by previous agents.
 
 ## Custom Agent Write Format
 

@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* Electron 主进程（Node 侧） */
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
+}

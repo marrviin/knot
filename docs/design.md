@@ -157,7 +157,7 @@ Knot 后端同时监听本地 Stdio 流，为启动的外部 Agent 随时按需�
 > ⚠️ 以下为示例代码，实施时需谨慎评审。
 
 ```javascript
-// 当 Claude Code 启动并调用 "fetch_project_knot" 工具时触发
+// 当 Claude Code 启动并调用 "recall_memories" 工具时触发
 async function handleMcpCall(query, projectId) {
     // 从本地已经通过监听洗净的中央库中，秒级语义检索高价值事实
     const matchedKnots = await memoryBus.search(query, { user_id: projectId });
@@ -231,7 +231,7 @@ async function handleMcpCall(query, projectId) {
 
 ### 阶段三：MCP 服务端与配置注入
 
-- 实现 Stdio 模式的 MCP Server（`--mode mcp-server`），暴露 `fetch_project_knot` 工具；
+- 实现 Stdio 模式的 MCP Server（`--mode mcp-server`），暴露 `recall_memories` 工具；
 - 实现 UI 一键改写 `~/.claude/mcp.json` 的注入逻辑（含已有配置的合并保护）。
 
 ### 阶段四：前端可视化看板
@@ -244,7 +244,7 @@ async function handleMcpCall(query, projectId) {
 ## 八、开放问题 *（整理补充，待定项）*
 
 1. **记忆文件 Schema**：`.myagent/mem.json` 的具体数据格式约定（纯文本条目数组？带类型/时间戳的结构化对象？）需与自研 Agent 对齐。
-2. **MCP Tool 接口签名**：`fetch_project_knot` 的入参（query、project_id 的来源方式）、返回结构与 token 上限需进一步定义；是否需要额外的写入/列出工具待评估。
+2. **MCP Tool 接口签名**：`recall_memories` 的入参（query、project_id 的来源方式）、返回结构与 token 上限需进一步定义；是否需要额外的写入/列出工具待评估。
 3. **提炼层本地化**：已决策：应用框架迁移至 Electron，真正引入 mem0ai 库做记忆管理；LLM 走 MiniMax（用户自配 API Key，默认关闭、设置中开启）；embedding 用 MiniMax embo-01，经本地 HTTP 转换层适配 OpenAI 格式（embo-01 实测不兼容 OpenAI input 格式）；向量库用 mem0 自带 SQLite 持久化（vectorStore.config.dbPath），无需 Qdrant。
 4. **多项目隔离细节**：同目录改名、多 Agent 并发写同一文件（虽为低频但非零概率）的兜底策略。
 5. **配置注入安全**：改写 `~/.claude/mcp.json` 前的备份与卸载/解绑（uninject）逻辑。

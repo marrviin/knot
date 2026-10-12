@@ -1,0 +1,186 @@
+//! settings tests use an in-memory fake of the store module's kv surface
+//! (settings.ts takes the store as a parameter — a clean seam for this).
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import * as settings from '../src/settings';
+
+function fakeStore() {
+  const map = new Map<string, string>();
+  return {
+    map,
+    getSetting: (k: string) => map.get(k) ?? null,
+    setSetting: (k: string, v: string) => void map.set(k, v),
+    deleteSetting: (k: string) => void map.delete(k),
+  } as any; // settings.ts only needs the kv surface of the store module
+}
+
+describe('settings.save (API key three-state semantics)', () => {
+  let s: ReturnType<typeof fakeStore>;
+
+  beforeEach(() => {
+    s = fakeStore();
+    s.setSetting('llm_api_key', 'old-key');
+  });
+
+  it('null keeps the stored key (field untouched)', () => {
+    settings.save(s, true, 'http://x', null, 'm', 'minimax');
+    expect(s.getSetting('llm_api_key')).toBe('old-key');
+  });
+
+  it("'' explicitly clears the key", () => {
+    settings.save(s, true, 'http://x', '', 'm', 'minimax');
+    expect(s.getSetting('llm_api_key')).toBeNull();
+  });
+
+  it('a non-empty value replaces the key', () => {
+    settings.save(s, true, 'http://x', 'new-key', 'm', 'minimax');
+    expect(s.getSetting('llm_api_key')).toBe('new-key');
+  });
+
+  it('empty baseUrl/model fall back to defaults', () => {
+    settings.save(s, true, '', null, '', 'minimax');
+    expect(s.getSetting('llm_base_url')).toBe('https://api.minimax.cn/v1');
+    expect(s.getSetting('llm_model')).toBe('MiniMax-M2.7');
+  });
+
+  it('empty baseUrl/model fall back to the openai defaults when provider is openai', () => {
+    settings.save(s, true, '', null, '', 'openai');
+    expect(s.getSetting('llm_base_url')).toBe('https://api.openai.com/v1');
+    expect(s.getSetting('llm_model')).toBe('gpt-5-mini');
+    expect(s.getSetting('llm_embed_model')).toBe('text-embedding-3-small');
+  });
+});
+
+describe('provider / embedding config', () => {
+  let s: ReturnType<typeof fakeStore>;
+
+  beforeEach(() => {
+    s = fakeStore();
+  });
+
+  it('defaults to the openai protocol on a fresh install (neutral, no MiniMax bias)', () => {
+    const cfg = settings.load(s);
+    expect(cfg.provider).toBe('openai');
+    expect(cfg.embedModel).toBe('text-embedding-3-small');
+  });
+
+  it('infers the minimax provider from a stored pre-provider baseUrl', () => {
+    // Installs before the provider field existed: only llm_base_url was written.
+    s.setSetting('llm_base_url', 'https://api.minimax.cn/v1');
+    expect(settings.load(s).provider).toBe('minimax');
+    s.setSetting('llm_base_url', 'https://api.minimax.io/v1');
+    expect(settings.load(s).provider).toBe('minimax');
+    s.setSetting('llm_base_url', 'https://api.siliconflow.cn/v1');
+    expect(settings.load(s).provider).toBe('openai');
+  });
+
+  it('round-trips an openai provider with a custom embedding model', () => {
+    settings.save(s, true, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai', 'BAAI/bge-m3');
+    const cfg = settings.load(s);
+    expect(cfg.provider).toBe('openai');
+    expect(cfg.embedModel).toBe('BAAI/bge-m3');
+    expect(settings.embedDimsOf(cfg.embedModel)).toBe(1024);
+    expect(settings.embedSignature(cfg)).toBe('openai/baai/bge-m3');
+  });
+
+  it('embedSignature changes whenever the embedding model identity changes', () => {
+    settings.save(s, true, '', null, '', 'minimax', 'embo-01');
+    const minimax = settings.load(s);
+    settings.save(s, true, '', null, '', 'openai', 'text-embedding-3-small');
+    const openai = settings.load(s);
+    // Same dims (1536) but a different model = a different vector space.
+    expect(settings.embedSignature(minimax)).not.toBe(settings.embedSignature(openai));
+  });
+});
+
+describe('loadWatchRules', () => {
+  let s: ReturnType<typeof fakeStore>;
+
+  beforeEach(() => {
+    s = fakeStore();
+  });
+
+  it('returns builtin defaults when nothing is stored', () => {
+    const rules = settings.loadWatchRules(s);
+    expect(rules.map((r) => r.id)).toEqual(['claude-code', 'codex', 'hermes', 'joycode']);
+  });
+
+  it('keeps user toggles for builtin cards but forces their match/agent to the preset', () => {
+    s.setSetting(
+      'watch_rules',
+      JSON.stringify([{ id: 'claude-code', agent: 'hacked', match: '/evil/*', enabled: false, builtin: true }]),
+    );
+    const rules = settings.loadWatchRules(s);
+    const cc = rules.find((r) => r.id === 'claude-code')!;
+    expect(cc.enabled).toBe(false); // user-owned
+    expect(cc.match).toBe('~/.claude/projects/<slug>/memory/*.md, CLAUDE.md'); // app-owned
+    expect(cc.agent).toBe('claude-code');
+  });
+
+  it('auto-restores missing builtin cards', () => {
+    s.setSetting('watch_rules', JSON.stringify([]));
+    expect(settings.loadWatchRules(s)).toHaveLength(4);
+  });
+
+  it('drops builtin ids that left the preset list (legacy myagent)', () => {
+    s.setSetting(
+      'watch_rules',
+      JSON.stringify([{ id: 'myagent', agent: 'myagent', match: '/x/*', enabled: true, builtin: true }]),
+    );
+    expect(settings.loadWatchRules(s).map((r) => r.id)).not.toContain('myagent');
+  });
+
+  it('migrates legacy path+pattern entries into match expressions', () => {
+    s.setSetting(
+      'watch_rules',
+      JSON.stringify([{ id: 'c1', agent: 'cursor', path: '/proj/.cursor', pattern: '*.md', enabled: true }]),
+    );
+    const [c1] = settings.loadWatchRules(s).filter((r) => r.id === 'c1');
+    expect(c1!.match).toBe('/proj/.cursor/*.md');
+  });
+
+  it('preserves a custom rule with an empty match (a card mid-edit must not vanish)', () => {
+    s.setSetting(
+      'watch_rules',
+      JSON.stringify([{ id: 'c1', agent: 'cursor', match: '', enabled: true }]),
+    );
+    expect(settings.loadWatchRules(s).some((r) => r.id === 'c1')).toBe(true);
+  });
+
+  it('backs up corrupted stored JSON before falling back to defaults', () => {
+    s.setSetting('watch_rules', '{not json');
+    const rules = settings.loadWatchRules(s);
+    expect(rules).toHaveLength(4); // builtin defaults
+    expect(s.getSetting('watch_rules_corrupt_backup')).toBe('{not json');
+  });
+});
+
+describe('saveWatchRules', () => {
+  let s: ReturnType<typeof fakeStore>;
+
+  beforeEach(() => {
+    s = fakeStore();
+  });
+
+  it('keeps empty-match rules instead of silently deleting cards mid-edit', () => {
+    const saved = settings.saveWatchRules(s, [
+      { id: 'c1', agent: 'cursor', match: '', enabled: true },
+      { id: 'c2', agent: 'windsurf', match: '.windsurf/*.md', enabled: true },
+    ]);
+    expect(saved).toHaveLength(2);
+    expect(settings.loadWatchRules(s).some((r) => r.id === 'c1')).toBe(true);
+  });
+
+  it('generates an id when missing and trims match/agent', () => {
+    const [r] = settings.saveWatchRules(s, [{ agent: ' cursor ', match: '  .cursor/*.md  ', enabled: false } as any]);
+    expect(r.id).toMatch(/^watch-\d+-/);
+    expect(r.agent).toBe('cursor');
+    expect(r.match).toBe('.cursor/*.md');
+    expect(r.enabled).toBe(false);
+  });
+
+  it('round-trips indexFiles overrides', () => {
+    settings.saveWatchRules(s, [{ id: 'h', agent: 'hermes', match: '~/.hermes/*.md', enabled: true, indexFiles: [] }]);
+    expect(settings.loadWatchRules(s).find((r) => r.id === 'h')!.indexFiles).toEqual([]);
+  });
+});
