@@ -32,6 +32,43 @@ let watched = new Set<string>();
 const debounces = new Map<string, NodeJS.Timeout>();
 let onIngested: (projectId: string, report: mem0.IngestReport) => void = () => {};
 
+// ---------- Project journal logs (.knot/logs — refresh-only watch) ----------
+// Journals are plain markdown files at <project>/.knot/logs/YYYY-MM-DD.md
+// (one per day), written directly by any agent — the filesystem is the truth
+// source. They never enter mem0: watching them only pushes refresh
+// notifications to the renderer, which re-reads them from the service.
+
+const JOURNAL_DIR = path.join('.knot', 'logs');
+const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/;
+
+/** Watched journal dir → owning project (only dirs that exist right now) */
+const journalDirs = new Map<string, string>();
+const journalDebounces = new Map<string, NodeJS.Timeout>();
+
+let onJournalChanged: (projectId: string) => void = () => {};
+
+export function setJournalListener(cb: (projectId: string) => void): void {
+  onJournalChanged = cb;
+}
+
+function journalProjectOf(changed: string): string | null {
+  if (!JOURNAL_FILE_RE.test(path.basename(changed))) return null;
+  const dir = path.dirname(changed);
+  return journalDirs.get(dir) ?? null;
+}
+
+function scheduleJournalNotify(projectId: string, file: string): void {
+  const prev = journalDebounces.get(file);
+  if (prev) clearTimeout(prev);
+  journalDebounces.set(
+    file,
+    setTimeout(() => {
+      journalDebounces.delete(file);
+      onJournalChanged(projectId);
+    }, DEBOUNCE_MS),
+  );
+}
+
 export function setIngestListener(
   cb: (projectId: string, report: mem0.IngestReport) => void,
 ): void {
@@ -196,6 +233,7 @@ export function rescan(): void {
   watcher ??= createWatcher();
   const wanted = new Set<string>();
   missingFileTargets = new Set<string>();
+  journalDirs.clear();
   for (const rule of enabledRules()) {
     for (const { root, hasWild } of compileEntries(rule)) {
       // Exact-file target missing on disk: watching the existing parent would
@@ -207,6 +245,19 @@ export function rescan(): void {
       }
       const target = watchableRoot(root);
       if (target) wanted.add(target);
+    }
+  }
+  // Per-project journal logs: watch the dir when it exists; poll for its
+  // creation otherwise (adding it to missingFileTargets — statSync succeeds for
+  // directories too, and the poll's rescan picks it up). Watching the project
+  // root instead would recursively watch whole trees (EMFILE).
+  for (const p of realProjects()) {
+    const dir = path.join(p.path, JOURNAL_DIR);
+    if (fs.existsSync(dir)) {
+      wanted.add(dir);
+      journalDirs.set(dir, p.path);
+    } else {
+      missingFileTargets.add(dir);
     }
   }
   log(
@@ -224,9 +275,10 @@ export function rescan(): void {
   syncMissingPoll();
 }
 
-/** Wildcard-less file targets that don't exist yet (e.g. CLAUDE.md on first run):
- *  polled so their creation is picked up without the parent-fallback's recursive
- *  watch. Kept as a module var — rescan() rebuilds it on every pass. */
+/** Wildcard-less file targets (e.g. CLAUDE.md on first run) and not-yet-created
+ *  journal log dirs (<project>/.knot/logs) that don't exist yet: polled so their
+ *  creation is picked up without the parent-fallback's recursive watch. Kept as a
+ *  module var — rescan() rebuilds it on every pass. */
 let missingFileTargets = new Set<string>();
 let missingPollTimer: NodeJS.Timeout | null = null;
 const MISSING_POLL_MS = 20_000;
@@ -282,6 +334,9 @@ export function unwatchAll(): void {
   }
   for (const t of debounces.values()) clearTimeout(t);
   debounces.clear();
+  for (const t of journalDebounces.values()) clearTimeout(t);
+  journalDebounces.clear();
+  journalDirs.clear();
   for (const t of retryTimers.values()) clearTimeout(t);
   retryTimers.clear();
   // close() is async; swallow rejection on quit (the process is going away anyway)
@@ -297,6 +352,13 @@ function createWatcher(): FSWatcher {
     depth: MAX_WALK_DEPTH,
   });
   const handle = (changed: string) => {
+    // Journal log files refresh the reader only — checked first so a broad
+    // custom card can't route .knot/logs content into mem0 extraction.
+    const journalProject = journalProjectOf(changed);
+    if (journalProject) {
+      scheduleJournalNotify(journalProject, changed);
+      return;
+    }
     const m = matchRule(changed);
     if (!m) return;
     // Catalog files (per-card config, default MEMORY.md) are indexes of memory
@@ -367,31 +429,32 @@ function scheduleRetry(file: string, rule: WatchRule, projectId: string, attempt
 
 /** Read a candidate memory file with guardrails: size cap (a misconfigured card
  *  matching huge files would otherwise ship whole logs/databases to the LLM) and a
- *  binary sniff (NUL bytes) so binary content is never sent for extraction. */
+ *  binary sniff (NUL bytes) so binary content is never sent for extraction.
+ *  Returns the mtime too — facts are stamped with the file's last-updated time. */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-async function readTextFile(file: string): Promise<string | null> {
+async function readTextFile(file: string): Promise<{ text: string; mtime: number } | null> {
   try {
     const st = await fs.promises.stat(file);
     if (!st.isFile() || st.size > MAX_FILE_BYTES) return null;
     const raw = await fs.promises.readFile(file, 'utf-8');
     if (raw.slice(0, 8000).includes('\u0000')) return null; // binary
-    return raw;
+    return { text: raw, mtime: Math.round(st.mtimeMs) };
   } catch {
     return null; // transient write or file deleted — wait for the next event
   }
 }
 
 async function ingestFile(file: string, rule: WatchRule, projectId: string): Promise<void> {
-  const raw = await readTextFile(file);
-  if (!raw?.trim()) return;
+  const read = await readTextFile(file);
+  if (!read?.text.trim()) return;
   if (!store.projectExists(projectId)) return;
 
-  const report = await mem0.ingest(currentUserDataDir, projectId, raw, {
+  const report = await mem0.ingest(currentUserDataDir, projectId, read.text, {
     agent: rule.agent,
     type: 'local-memory',
     source: file,
-  });
+  }, read.mtime);
   if (report.notice) {
     const attempt = (retryCounts.get(file) ?? 0) + 1;
     retryCounts.set(file, attempt);
@@ -601,13 +664,13 @@ async function ingestFileOnce(
   rule: WatchRule,
   onIngestedCb: (projectId: string, report: mem0.IngestReport) => void,
 ): Promise<mem0.IngestReport> {
-  const raw = await readTextFile(file);
-  if (!raw?.trim()) return { added: 0, updated: 0, deleted: 0 };
-  const report = await mem0.ingest(currentUserDataDir, projectId, raw, {
+  const read = await readTextFile(file);
+  if (!read?.text.trim()) return { added: 0, updated: 0, deleted: 0 };
+  const report = await mem0.ingest(currentUserDataDir, projectId, read.text, {
     agent: rule.agent,
     type: 'local-memory',
     source: file,
-  });
+  }, read.mtime);
   if (report.added + report.updated + report.deleted > 0 || report.notice) {
     onIngestedCb(projectId, report);
   }

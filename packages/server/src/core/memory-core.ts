@@ -254,6 +254,7 @@ export async function ingest(
   raw: string,
   meta: { agent: string; type: string; source: string },
   preferExisting: Set<string> = new Set(),
+  sourceMtime?: number,
 ): Promise<{ report: IngestReport; facts: FactItem[] }> {
   const m = await ensureMemory(cfg, dataDir);
   if (!m) return { report: { added: 0, updated: 0, deleted: 0, notice: '记忆库未配置' }, facts: [] };
@@ -291,9 +292,11 @@ export async function ingest(
   const { report, facts, addedIds, updatedIds, deletedIds } = diffReports(beforeMap, after);
   // Timestamps tracked server-side (see store.ts) — compacted-away dups land in
   // deletedIds too, keeping the meta rows exactly aligned with the truth state.
-  const now = Date.now();
-  store.stampAdded(dataDir, projectId, addedIds, now);
-  store.stampUpdated(dataDir, updatedIds, now);
+  // File-sourced ingests stamp the source file's mtime (the fact's "as of" time),
+  // not the ingest moment; manual writes fall back to now.
+  const at = sourceMtime && sourceMtime > 0 ? sourceMtime : Date.now();
+  store.stampAdded(dataDir, projectId, addedIds, at);
+  store.stampUpdated(dataDir, updatedIds, at);
   store.deleteMeta(dataDir, deletedIds);
   return { report, facts: withMeta(dataDir, projectId, facts) };
 }

@@ -207,12 +207,14 @@ function reconcileMirror(
 /** Ingest raw memory text through the service, then reconcile the mirror store
  *  against the truth state it reports. Failures return a notice (the watcher's
  *  retry loop keys off it) — the mirror is only ever written from a successful
- *  service response, never degraded to local-only. */
+ *  service response, never degraded to local-only. sourceMtime: the source
+ *  file's mtime — display timestamps track the file, not the ingest moment. */
 export async function ingest(
   userDataDir: string,
   projectId: string,
   raw: string,
   meta: { agent: string; type: string; source: string },
+  sourceMtime?: number,
 ): Promise<IngestReport> {
   let m: Memory | null;
   try {
@@ -231,7 +233,7 @@ export async function ingest(
     const preferExisting = store.listFacts(projectId).map((f) => f.id);
     const r = await api<IngestResponse>('/ingest', {
       method: 'POST',
-      body: { projectId, raw, meta, preferExisting },
+      body: { projectId, raw, meta, preferExisting, ...(sourceMtime ? { sourceMtime } : {}) },
       timeoutMs: ADD_TIMEOUT_MS,
     });
     log(

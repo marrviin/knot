@@ -17,6 +17,7 @@ export interface CoreApi {
     raw: string,
     meta: { agent: string; type: string; source: string },
     preferExisting: Set<string>,
+    sourceMtime?: number,
   ): Promise<{ report: IngestReport; facts: FactItem[] }>;
   addManualMemory(
     projectId: string,
@@ -40,8 +41,8 @@ export interface CoreApi {
 /** Bind the real mem0-backed core to the server config. */
 export function realCore(cfg: ServerConfig): CoreApi {
   return {
-    ingest: (projectId, raw, meta, preferExisting) =>
-      core.ingest(cfg.llm, cfg.dataDir, projectId, raw, meta, preferExisting),
+    ingest: (projectId, raw, meta, preferExisting, sourceMtime) =>
+      core.ingest(cfg.llm, cfg.dataDir, projectId, raw, meta, preferExisting, sourceMtime),
     addManualMemory: (projectId, content) =>
       core.addManualMemory(cfg.llm, cfg.dataDir, projectId, content),
     updateFact: (memoryId, content) => core.updateFact(cfg.llm, cfg.dataDir, memoryId, content),

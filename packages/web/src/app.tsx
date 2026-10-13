@@ -30,6 +30,7 @@ import type { MenuProps } from "antd";
 import { StyleProvider } from "@ant-design/cssinjs";
 import zhCN from "antd/locale/zh_CN";
 import {
+  BookOutlined,
   DeleteOutlined,
   EllipsisOutlined,
   FolderOutlined,
@@ -47,6 +48,7 @@ import { SettingsModal } from "./settings-modal";
 import { AgentIcon } from "./agent-icon";
 import { InlineMd } from "./inline-md";
 import { MarqueeLabel } from "./marquee-label";
+import { JournalView } from "./journal-view";
 
 type Notify = (message: string, type?: "info" | "error") => void;
 
@@ -505,6 +507,9 @@ function FactPanel({
   const [watchAgents, setWatchAgents] = useState<string[]>([]);
   /** Header icon filter: show only this agent's memories (null = all) */
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
+  /** Header toggle: journal reader instead of the memory wall (search and the
+   *  agent filter only cover memories, so they hide in journal mode) */
+  const [journalMode, setJournalMode] = useState(false);
 
   useEffect(() => {
     api
@@ -588,7 +593,7 @@ function FactPanel({
             </Tag>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            {importing ? (
+            {importing && !journalMode ? (
               /* Import in progress: ring progress + the current file as plain
                   text, replacing the search box while it runs */
               <div className="flex h-8 items-center gap-2">
@@ -624,7 +629,7 @@ function FactPanel({
                   </span>
                 </div>
               </div>
-            ) : (
+            ) : journalMode ? null : (
               /* mem0 semantic search: debounced input triggers automatically;
                   the dropdown lists this project's last 10 searches (unfiltered,
                   like a browser search box) — picking one re-runs it */
@@ -652,7 +657,7 @@ function FactPanel({
               </AutoComplete>
             )}
             {/* One icon per agent that has memories here; click filters the list, click again clears */}
-            {factAgents.length > 0 && (
+            {!journalMode && factAgents.length > 0 && (
               <div className="flex items-center gap-1.5">
                 {factAgents.map((agent) => {
                   const active = agentFilter === agent;
@@ -676,6 +681,19 @@ function FactPanel({
                 })}
               </div>
             )}
+            {/* Rightmost entry: toggle the journal reader (experiment logs) */}
+            <button
+              type="button"
+              title="实验日志（点击切换日志视图）"
+              onClick={() => setJournalMode((v) => !v)}
+              className={`flex cursor-pointer items-center rounded-lg border-0 p-1.5 transition-colors ${
+                journalMode
+                  ? "bg-[color-mix(in_srgb,#3768fa_12%,transparent)] text-accent"
+                  : "bg-transparent text-muted opacity-70 hover:opacity-100"
+              }`}
+            >
+              <BookOutlined className="text-[18px]" />
+            </button>
           </div>
         </div>
         {watchAgents.length === 0 && (
@@ -686,7 +704,9 @@ function FactPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
-        {hits ? (
+        {journalMode ? (
+          <JournalView project={project} onNotify={onNotify} />
+        ) : hits ? (
           <>
             <p className="mb-3 text-xs text-muted">
               {shownHits?.some((h) => h.semanticScore != null)

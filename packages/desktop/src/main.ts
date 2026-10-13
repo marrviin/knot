@@ -145,6 +145,10 @@ async function startGui(): Promise<void> {
   watcher.setIngestListener((projectId, report) => {
     onFactsChanged({ path: projectId, ...report });
   });
+  // Journal log changes carry no report — refresh only, no toast
+  watcher.setJournalListener((projectId) => {
+    onFactsChanged({ path: projectId });
+  });
   watcher.setImportListener(sendImportProgress);
 
   registerIpc({ userDataDir, onFactsChanged });

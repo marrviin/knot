@@ -4,6 +4,8 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { shutdown } from './core';
+import { startJournalScheduler } from './core/journal-gen';
+import { ensurePartnerPersonality } from './routes/settings';
 
 const cfg = loadConfig();
 const app = buildApp(cfg);
@@ -12,6 +14,10 @@ app
   .listen({ port: cfg.port, host: cfg.host })
   .then(() => {
     app.log.info(`Knot 记忆服务已启动: http://${cfg.host}:${cfg.port}（数据目录 ${cfg.dataDir}）`);
+    // 搭档性格：首次启动随机抽取，之后固定（设置页可「换一个」重抽）
+    ensurePartnerPersonality(cfg.dataDir);
+    // Journal writer: backfill missing past-day logs at startup, then hourly
+    startJournalScheduler(cfg.llm, cfg.dataDir);
   })
   .catch((e) => {
     app.log.error(`启动失败: ${e}`);

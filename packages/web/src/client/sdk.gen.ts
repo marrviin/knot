@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddFactData, AddFactResponses, CountFactsData, CountFactsResponses, DeleteFactData, DeleteFactResponses, GetHealthData, GetHealthResponses, IngestFactsData, IngestFactsResponses, ListFactsData, ListFactsResponses, ListProjectsData, ListProjectsResponses, RegisterProjectData, RegisterProjectResponses, RemoveProjectData, RemoveProjectResponses, SearchMemoriesData, SearchMemoriesResponses, UpdateFactData, UpdateFactResponses } from './types.gen';
+import type { AddFactData, AddFactResponses, CountFactsData, CountFactsResponses, DeleteFactData, DeleteFactResponses, GenerateJournalsData, GenerateJournalsResponses, GetHealthData, GetHealthResponses, GetJournalPendingData, GetJournalPendingResponses, GetPersonalizationData, GetPersonalizationResponses, IngestFactsData, IngestFactsResponses, ListFactsData, ListFactsResponses, ListJournalsData, ListJournalsResponses, ListProjectsData, ListProjectsResponses, RegenerateJournalsData, RegenerateJournalsResponses, RegisterProjectData, RegisterProjectResponses, RemoveProjectData, RemoveProjectResponses, SavePersonalizationData, SavePersonalizationResponses, SearchMemoriesData, SearchMemoriesResponses, UpdateFactData, UpdateFactResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -68,6 +68,39 @@ export const removeProject = <ThrowOnError extends boolean = false>(options: Opt
 
 export const searchMemories = <ThrowOnError extends boolean = false>(options: Options<SearchMemoriesData, ThrowOnError>) => (options.client ?? client).post<SearchMemoriesResponses, unknown, ThrowOnError>({
     url: '/search',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const listJournals = <ThrowOnError extends boolean = false>(options: Options<ListJournalsData, ThrowOnError>) => (options.client ?? client).get<ListJournalsResponses, unknown, ThrowOnError>({ url: '/projects/{projectId}/journals', ...options });
+
+export const getJournalPending = <ThrowOnError extends boolean = false>(options?: Options<GetJournalPendingData, ThrowOnError>) => (options?.client ?? client).get<GetJournalPendingResponses, unknown, ThrowOnError>({ url: '/journals/pending', ...options });
+
+export const generateJournals = <ThrowOnError extends boolean = false>(options: Options<GenerateJournalsData, ThrowOnError>) => (options.client ?? client).post<GenerateJournalsResponses, unknown, ThrowOnError>({
+    url: '/journals/generate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const regenerateJournals = <ThrowOnError extends boolean = false>(options: Options<RegenerateJournalsData, ThrowOnError>) => (options.client ?? client).post<RegenerateJournalsResponses, unknown, ThrowOnError>({
+    url: '/journals/regenerate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const getPersonalization = <ThrowOnError extends boolean = false>(options?: Options<GetPersonalizationData, ThrowOnError>) => (options?.client ?? client).get<GetPersonalizationResponses, unknown, ThrowOnError>({ url: '/settings/personalization', ...options });
+
+export const savePersonalization = <ThrowOnError extends boolean = false>(options: Options<SavePersonalizationData, ThrowOnError>) => (options.client ?? client).put<SavePersonalizationResponses, unknown, ThrowOnError>({
+    url: '/settings/personalization',
     ...options,
     headers: {
         'Content-Type': 'application/json',

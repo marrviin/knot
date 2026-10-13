@@ -8,13 +8,20 @@
  *  IPC → setMemoryEndpoint); the future web build reads its saved service config
  *  from localStorage into the same entry. */
 
-import type { Fact, Project } from "./types";
+import type { Fact, JournalEntry, JournalPending, Project } from "./types";
+import type { SavePersonalizationData } from "./client";
 import {
   addFact as addFactHttp,
   deleteFact as deleteFactHttp,
+  generateJournals as generateJournalsHttp,
+  getJournalPending as getJournalPendingHttp,
+  getPersonalization as getPersonalizationHttp,
   listFacts as listFactsHttp,
+  listJournals as listJournalsHttp,
   listProjects as listProjectsHttp,
+  savePersonalization as savePersonalizationHttp,
   registerProject as registerProjectHttp,
+  regenerateJournals as regenerateJournalsHttp,
   removeProject as removeProjectHttp,
   searchMemories as searchMemoriesHttp,
   updateFact as updateFactHttp,
@@ -329,6 +336,71 @@ export async function searchMemories(
     source: h.source,
     updatedAt: h.updatedAt ?? undefined,
   }));
+}
+
+// ---------- Journals (.knot/logs, read-only — agents write the files) ----------
+
+export async function listJournals(projectId: string): Promise<JournalEntry[]> {
+  requireEndpoint();
+  const { data } = await listJournalsHttp({ path: { projectId } });
+  if (!data) throw new Error("日志列表加载失败");
+  return data.journals;
+}
+
+/** Days with memory activity but no journal file, scoped to one project when
+ *  given (the journal view's button) or across all projects */
+export async function getJournalPending(projectId?: string): Promise<JournalPending[]> {
+  requireEndpoint();
+  const { data } = await getJournalPendingHttp(
+    projectId ? { query: { projectId } } : {},
+  );
+  if (!data) throw new Error("待生成检查失败");
+  return data.pending;
+}
+
+/** Kick the journal writer (fire-and-forget server-side); same scoping */
+export async function generateJournals(projectId?: string): Promise<void> {
+  requireEndpoint();
+  const { error } = await generateJournalsHttp({
+    body: projectId ? { projectId } : {},
+  });
+  if (error) throw error;
+}
+
+/** Debug: delete the project's past-date journals and regenerate them from the
+ *  same memories (fire-and-forget server-side, like generateJournals) */
+export async function regenerateJournals(projectId: string): Promise<void> {
+  requireEndpoint();
+  const { error } = await regenerateJournalsHttp({ body: { projectId } });
+  if (error) throw error;
+}
+
+// ---------- Personalization (server-owned settings) ----------
+
+/** 个性化设置：日记作者对用户的称呼（空 = 默认「搭档」）与搭档性格
+ *  （SBTI 27 型之一的 id，空 = 默认口吻；合法值由服务端 ajv 校验）。 */
+export interface Personalization {
+  displayName: string;
+  personality: string;
+}
+
+export async function getPersonalization(): Promise<Personalization> {
+  requireEndpoint();
+  const { data } = await getPersonalizationHttp();
+  if (!data) throw new Error("个性化设置加载失败");
+  return data;
+}
+
+export async function savePersonalization(
+  displayName: string,
+  personality: string,
+): Promise<void> {
+  requireEndpoint();
+  const { error } = await savePersonalizationHttp({
+    // personality 的合法值由服务端 ajv 校验（非法 → 400），这里不重复字面量联合。
+    body: { displayName, personality } as SavePersonalizationData["body"],
+  });
+  if (error) throw error;
 }
 
 // ---------- External links ----------

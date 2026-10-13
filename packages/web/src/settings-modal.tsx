@@ -7,7 +7,7 @@
  * (.pc-settings-header) with the content area scrolling independently below it.
  * destroyOnHidden: each open remounts from the initial pane.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   ConfigProvider,
@@ -31,10 +31,14 @@ import {
   LinkOutlined,
   MessageOutlined,
   PlusOutlined,
+  SyncOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import cx from "classnames";
 import { menuSkinTheme } from "./menu-skin";
 import { AgentIcon } from "./agent-icon";
+import { SBTI_TYPES } from "@knot/shared";
+import { SBTI_IMAGES } from "./sbti-images";
 import * as api from "./api";
 import appIcon from "./assets/app-icon.png";
 import pkg from "../package.json";
@@ -44,9 +48,10 @@ type Notify = (message: string, type?: "info" | "error") => void;
 /** Unified settings-card shell shared by the watch and connector panes' card
  *  lists (32px icon + title/desc column + trailing toggle). */
 const CARD =
-  "flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3";
+  "flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-3";
 
 const TABS = [
+  { key: "personalization", label: "个性化", icon: <UserOutlined /> },
   { key: "general", label: "记忆服务", icon: <ExperimentOutlined /> },
   { key: "watch", label: "记忆监听", icon: <ApiOutlined /> },
   { key: "connector", label: "连接器", icon: <LinkOutlined /> },
@@ -119,6 +124,8 @@ export function SettingsModal({
           <div className="box-border min-h-0 min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
             {pane === "about" ? (
               <AboutPane />
+            ) : pane === "personalization" ? (
+              <PersonalizationPane onNotify={onNotify} />
             ) : pane === "watch" ? (
               <WatchPane onNotify={onNotify} />
             ) : pane === "connector" ? (
@@ -178,7 +185,33 @@ function presetKeyFor(baseUrl: string): string {
   );
 }
 
-/** 表单字段行（对齐 joybuddy 的 ModelForm）：label 在上、控件在下，desc 跟在 label 后。 */
+/** 设置卡片：标题在上，内容在浅灰盒里；action 渲染在标题行右侧（如「换一个」）。 */
+function SettingCard({
+  title,
+  desc,
+  action,
+  children,
+}: {
+  title: string;
+  desc?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium text-fg">{title}</div>
+          {desc && <div className="mt-0.5 text-xs text-muted">{desc}</div>}
+        </div>
+        {action}
+      </div>
+      <div className="rounded-lg bg-panel px-4 py-3">{children}</div>
+    </div>
+  );
+}
+
+/** 表单字段行（编辑弹窗内用）：label 在上、控件在下，desc 跟在 label 后。 */
 function FormField({
   label,
   desc,
@@ -438,8 +471,10 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
 
       {/* 记忆存储模式：本地子进程（默认，数据在 userData）或用户自部署的 server/ 远程服务。
           两种模式共用同一套 HTTP 客户端，只是地址不同；切换即时保存，失败回滚。 */}
-      <section className="flex flex-col gap-3">
-        <div className="text-xs font-semibold text-muted">记忆存储</div>
+      <SettingCard
+        title="记忆存储"
+        // desc="记忆数据保存在本机子进程服务，或连接自行部署的远程 Knot 服务；切换即时保存，失败自动回滚"
+      >
         <Radio.Group
           value={mode}
           onChange={(e) =>
@@ -451,65 +486,67 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
             { value: "local", label: "本地服务" },
             { value: "remote", label: "远程服务" },
           ]}
-          className="self-start"
+          className="shrink-0"
         />
-        {mode === "remote" && (
-          <div className="flex flex-col gap-3 rounded-[10px] bg-panel px-5 py-4">
-            <p className="m-0 text-xs leading-5 text-muted">
-              填写自行部署的 Knot 记忆服务地址（server/ 目录提供
-              Dockerfile）。远程模式下记忆与向量全部存在服务端，
-              本机仅保留展示镜像；服务不可达时语义检索与导入会直接报错，不会降级写本地。
-            </p>
-            <FormField label="服务地址">
-              <Input
-                value={remoteUrl}
-                placeholder="http://127.0.0.1:27184"
-                onChange={(e) => setRemoteUrl(e.target.value)}
-                onBlur={() => void saveRemoteUrl()}
-                allowClear
-              />
-            </FormField>
-            <FormField
-              label="访问令牌"
-              desc={
-                hasRemoteToken
-                  ? "已配置，留空保持不变"
-                  : "服务未设置令牌时可留空"
-              }
+      </SettingCard>
+
+      {mode === "remote" && (
+        <section className="flex flex-col gap-3">
+          <div className="text-[13px] font-medium text-fg">远程服务</div>
+          <p className="m-0 -mt-1.5 text-xs leading-5 text-muted">
+            填写自行部署的 Knot 记忆服务地址（server/ 目录提供
+            Dockerfile）。远程模式下记忆与向量全部存在服务端，
+            本机仅保留展示镜像；服务不可达时语义检索与导入会直接报错，不会降级写本地。
+          </p>
+          <SettingCard title="服务地址">
+            <Input
+              value={remoteUrl}
+              placeholder="http://127.0.0.1:27184"
+              onChange={(e) => setRemoteUrl(e.target.value)}
+              onBlur={() => void saveRemoteUrl()}
+              allowClear
+              className="w-75 shrink-0"
+            />
+          </SettingCard>
+          <SettingCard
+            title="访问令牌"
+            desc={
+              hasRemoteToken ? "已配置，留空保持不变" : "服务未设置令牌时可留空"
+            }
+          >
+            <Input.Password
+              value={remoteToken}
+              placeholder={hasRemoteToken ? "••••••••" : "可选"}
+              onChange={(e) => setRemoteToken(e.target.value)}
+              onBlur={() => void saveRemoteToken()}
+              className="w-50 shrink-0"
+            />
+          </SettingCard>
+          <SettingCard
+            title="测试连接"
+            desc="对远程服务发起 /health 检查，验证地址与令牌（使用未保存的输入）"
+          >
+            <Button
+              icon={<ApiOutlined />}
+              loading={testing}
+              onClick={() => void testConnection()}
+              className="shrink-0"
             >
-              <Input.Password
-                value={remoteToken}
-                placeholder={hasRemoteToken ? "••••••••" : "可选"}
-                onChange={(e) => setRemoteToken(e.target.value)}
-                onBlur={() => void saveRemoteToken()}
-              />
-            </FormField>
-            <div>
-              <Button
-                icon={<ApiOutlined />}
-                loading={testing}
-                onClick={() => void testConnection()}
-              >
-                测试连接
-              </Button>
-            </div>
-          </div>
-        )}
-      </section>
+              测试
+            </Button>
+          </SettingCard>
+        </section>
+      )}
 
       {mode === "local" && (
         <>
-          {/* 服务配置横幅：说明 + 常驻主按钮入口。只有一套模型服务配置，已配置时按钮转为编辑同一份配置。 */}
+          {/* 服务配置卡片：说明 + 常驻主按钮入口。只有一套模型服务配置，已配置时按钮转为编辑同一份配置。 */}
           <section className="flex flex-col gap-3">
-            <div className="text-xs font-semibold text-muted">服务配置</div>
-            <div className="flex items-center justify-between gap-4 rounded-[10px] bg-panel px-5 py-4">
-              <div className="min-w-0">
-                <div className="text-[14px] font-medium text-fg">模型服务</div>
-                <div className="mt-1 text-[13px] text-muted">
-                  管理记忆服务连接的模型 API，语义去重与语义检索时调用 Embedding
-                  接口。
-                </div>
-              </div>
+            {/* <div className="text-xs font-semibold text-muted">服务配置</div> */}
+            <SettingCard
+              title="模型服务"
+              // desc="管理记忆服务连接的模型 API，语义去重与语义检索时调用 Embedding 接口。"
+            >
               <Button
                 type="primary"
                 icon={baseUrl || model ? <EditOutlined /> : <PlusOutlined />}
@@ -518,15 +555,15 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
               >
                 {baseUrl || model ? "编辑配置" : "配置模型"}
               </Button>
-            </div>
+            </SettingCard>
           </section>
 
           {/* 当前配置（对齐 joybuddy 的「已保存模型」区）：模型卡片，整卡可点进编辑。 */}
           <section className="flex flex-col gap-3">
-            <div className="text-xs font-semibold text-muted">当前配置</div>
+            {/* <div className="text-xs font-semibold text-muted">当前配置</div> */}
             {baseUrl || model ? (
               <div
-                className="cursor-pointer rounded-xl border border-line bg-surface transition-colors hover:border-accent"
+                className="cursor-pointer rounded-xl border border-line bg-panel transition-colors hover:border-accent"
                 onClick={openEdit}
               >
                 <div className="flex items-center gap-3 px-4 pb-3 pt-3.5">
@@ -737,6 +774,150 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** "Personalization" pane: server-owned preferences that shape how the journal
+ *  writer treats you — 搭档如何称呼你 (empty = default「搭档」) and 搭档性格
+ *  (SBTI 27-type card picker; empty = the writer's default voice). Text fields
+ *  blur-save, cards save on click; failures roll the inputs back. */
+function PersonalizationPane({ onNotify }: { onNotify: Notify }) {
+  /** null = still loading; "" = unset. */
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [personality, setPersonality] = useState("");
+  /** Last persisted values — blur also fires after allowClear's clear and after
+   *  an Enter-save, so identical saves are skipped (idempotent anyway). */
+  const savedRef = useRef<{ displayName: string; personality: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    api
+      .getPersonalization()
+      .then((p) => {
+        setDisplayName(p.displayName);
+        setPersonality(p.personality);
+        savedRef.current = {
+          displayName: p.displayName,
+          personality: p.personality,
+        };
+      })
+      .catch((e) => {
+        setDisplayName("");
+        onNotify(`加载个性化设置失败: ${e?.message ?? e}`, "error");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Optimistically persist the full personalization block (both fields are
+   *  always sent — the API is one PUT); rollback both inputs on failure. */
+  const persist = async (next: {
+    displayName?: string;
+    personality?: string;
+  }) => {
+    if (!savedRef.current) return;
+    const target = {
+      displayName: next.displayName ?? savedRef.current.displayName,
+      personality: next.personality ?? savedRef.current.personality,
+    };
+    if (
+      target.displayName === savedRef.current.displayName &&
+      target.personality === savedRef.current.personality
+    ) {
+      return;
+    }
+    const prev = savedRef.current;
+    savedRef.current = target;
+    if (next.displayName !== undefined) setDisplayName(next.displayName);
+    if (next.personality !== undefined) setPersonality(next.personality);
+    try {
+      await api.savePersonalization(target.displayName, target.personality);
+    } catch (e) {
+      savedRef.current = prev;
+      setDisplayName(prev.displayName);
+      setPersonality(prev.personality);
+      onNotify(`保存失败: ${e}`, "error");
+    }
+  };
+
+  if (displayName === null) {
+    return <p className="m-0 text-xs text-muted">加载中…</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="m-0 mt-1 text-xs leading-5 text-muted">
+        实验日志的日记作者会按这里的设定来和你相处：用你喜欢的称呼、带着抽到的性格写日记。称呼留空则是默认的「搭档」口吻。
+      </p>
+      <SettingCard title="搭档如何称呼你">
+        <Input
+          value={displayName}
+          placeholder="搭档"
+          onChange={(e) => setDisplayName(e.target.value)}
+          onPressEnter={() => void persist({ displayName })}
+          onBlur={() => void persist({ displayName })}
+          maxLength={50}
+          allowClear
+          className="w-full shrink-0"
+        />
+      </SettingCard>
+      <SettingCard
+        title="搭档性格"
+        action={
+          <Button
+            icon={<SyncOutlined />}
+            size="small"
+            aria-label="换一个性格"
+            className="shrink-0"
+            onClick={() => {
+              // 重抽：从其余 26 型里随机换一个，失败回滚由 persist 处理
+              const pool = SBTI_TYPES.filter((t) => t.id !== personality);
+              const next = pool[Math.floor(Math.random() * pool.length)]!;
+              void persist({ personality: next.id });
+            }}
+          />
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {(() => {
+            const current = SBTI_TYPES.find((t) => t.id === personality);
+            return current ? (
+              <div className="flex items-start gap-3">
+                <img
+                  src={SBTI_IMAGES[current.id] ?? ""}
+                  alt={current.name}
+                  className="h-20 w-20 shrink-0 rounded-xl object-cover select-none"
+                  draggable={false}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1.5 flex items-baseline gap-2">
+                    <span className="text-[13px] font-medium text-fg">
+                      {current.name}
+                    </span>
+                  </div>
+                  <div className="relative rounded-xl bg-white px-4 py-2.5">
+                    {/* 气泡尾巴：旋转小方块，颜色与气泡一致，指向左侧头像 */}
+                    <div className="absolute top-3.5 -left-1 h-2.5 w-2.5 rotate-45 bg-white" />
+                    {current.lines.map((line) => (
+                      <p
+                        key={line}
+                        className="m-0 text-[13px] leading-6 text-fg"
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="m-0 text-xs text-muted">
+                还没抽出性格，记忆服务连接后自动抽取
+              </p>
+            );
+          })()}
+        </div>
+      </SettingCard>
     </div>
   );
 }

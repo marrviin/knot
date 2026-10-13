@@ -22,9 +22,26 @@ export interface Fact {
   updatedAt: number | null;
 }
 
+/** One day's journal entry (<project>/.knot/logs/YYYY-MM-DD.md) — read-only
+ *  for the UI; agents write the files directly. */
+export interface JournalEntry {
+  /** YYYY-MM-DD (from the file name) */
+  date: string;
+  content: string;
+  /** File mtime, unix ms */
+  mtime: number;
+}
+
+/** A project's days that have memory activity but no journal file yet
+ *  (GET /journals/pending — the generate button's pre-check) */
+export interface JournalPending {
+  projectId: string;
+  name: string;
+  dates: string[];
+}
+
 /** Progress of the one-time existing-content import (knot://import-progress) */
-export interface ImportProgress {
-  /** Project path ('' for a global notice, e.g. LLM not configured) */
+export interface ImportProgress {  /** Project path ('' for a global notice, e.g. LLM not configured) */
   project: string;
   ruleId: string;
   phase: 'start' | 'file' | 'done';

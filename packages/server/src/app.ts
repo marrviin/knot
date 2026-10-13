@@ -12,8 +12,12 @@
 //! - GET    /projects/:projectId/facts                                   → {facts}
 //! - POST   /search  {projectId, query, topK?}                           → {hits:[{id,memory,score}]}
 //! - GET    /projects/:projectId/count?agent=                            → {count}
+//! - GET    /projects/:projectId/journals                                → {journals:[{date,content,mtime}]}
+//! - GET    /journals/pending                                            → {pending:[{projectId,name,dates}]}（有记忆活动但无日志的日期）
+//! - POST   /journals/generate                                           → {ok}（触发日志补写，异步执行）
 //! - GET    /projects                                                    → {projects:[{id,name,factCount,lastUpdated}]}
 //! - DELETE /projects/:projectId                                         → {ok}
+//! - GET/PUT /settings/personalization                                   → {displayName, personality} / {ok}（个性化）
 //!
 //! Swagger: /docs (swagger-ui) + /docs/json (openapi.json) — scripts/emit-openapi.ts
 //! snapshots the latter to packages/server/openapi.json for hey-api generation.
@@ -41,6 +45,8 @@ import ingestRoutes from './routes/ingest';
 import factRoutes from './routes/facts';
 import projectRoutes from './routes/projects';
 import searchRoutes from './routes/search';
+import journalRoutes from './routes/journals';
+import settingsRoutes from './routes/settings';
 
 export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): FastifyInstance {
   const app = Fastify({
@@ -84,6 +90,8 @@ export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): F
     protectedApp.register(factRoutes);
     protectedApp.register(projectRoutes);
     protectedApp.register(searchRoutes);
+    protectedApp.register(journalRoutes);
+    protectedApp.register(settingsRoutes);
   });
 
   return app;

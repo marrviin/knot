@@ -4,6 +4,7 @@
 //! those checks keep the Chinese error strings the desktop client surfaces.
 
 import { Type } from '@sinclair/typebox';
+import { SBTI_TYPES } from '@knot/shared';
 
 /** POST /ingest */
 export const IngestBody = Type.Object({
@@ -17,6 +18,9 @@ export const IngestBody = Type.Object({
     }),
   ),
   preferExisting: Type.Optional(Type.Array(Type.String())),
+  /** Source file's mtime (unix ms) — facts display the file's last-updated
+   *  time, not the ingest moment; absent → stamped with now (manual writes). */
+  sourceMtime: Type.Optional(Type.Number()),
 });
 
 /** POST /facts */
@@ -117,3 +121,55 @@ export const ProjectInfoSchema = Type.Object({
 });
 
 export const ProjectsResponse = Type.Object({ projects: Type.Array(ProjectInfoSchema) });
+
+/** GET /projects/:projectId/journals 条目（.knot/logs/YYYY-MM-DD.md，一天一文件） */
+export const JournalSchema = Type.Object({
+  date: Type.String(),
+  content: Type.String(),
+  mtime: Type.Number(),
+});
+
+export const JournalsResponse = Type.Object({ journals: Type.Array(JournalSchema) });
+
+/** GET /journals/pending — days that have memory activity but no journal file */
+export const JournalPendingSchema = Type.Object({
+  projectId: Type.String(),
+  name: Type.String(),
+  dates: Type.Array(Type.String()),
+});
+
+export const JournalsPendingResponse = Type.Object({
+  pending: Type.Array(JournalPendingSchema),
+});
+
+/** GET /journals/pending?projectId= / POST /journals/generate {projectId?} —
+ *  absent → all registered projects (hourly tick semantics) */
+export const JournalScopeQuery = Type.Object({
+  projectId: Type.Optional(Type.String()),
+});
+
+export const JournalScopeBody = Type.Object({
+  projectId: Type.Optional(Type.String()),
+});
+
+/** POST /journals/regenerate — debug: one project, required（误删全部项目不可接受） */
+export const JournalProjectBody = Type.Object({
+  projectId: Type.String(),
+});
+
+/** GET/PUT /settings/personalization — 个性化设置（日记作者对用户的称呼 + 搭档性格）。
+ *  personality 的合法值是 SBTI 27 型的 id 或 ''（未设置），ajv 直接把非法值挡成 400。 */
+export const PersonalityIdSchema = Type.Union([
+  Type.Literal(''),
+  ...SBTI_TYPES.map((t) => Type.Literal(t.id)),
+]);
+
+export const PersonalizationBody = Type.Object({
+  displayName: Type.String(),
+  personality: PersonalityIdSchema,
+});
+
+export const PersonalizationResponse = Type.Object({
+  displayName: Type.String(),
+  personality: PersonalityIdSchema,
+});

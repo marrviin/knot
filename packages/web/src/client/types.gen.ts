@@ -36,6 +36,7 @@ export type IngestFactsData = {
             source?: string;
         };
         preferExisting?: Array<string>;
+        sourceMtime?: number;
     };
     path?: never;
     query?: never;
@@ -290,3 +291,131 @@ export type SearchMemoriesResponses = {
 };
 
 export type SearchMemoriesResponse = SearchMemoriesResponses[keyof SearchMemoriesResponses];
+
+export type ListJournalsData = {
+    body?: never;
+    path: {
+        projectId: string;
+    };
+    query?: never;
+    url: '/projects/{projectId}/journals';
+};
+
+export type ListJournalsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        journals: Array<{
+            date: string;
+            content: string;
+            mtime: number;
+        }>;
+    };
+};
+
+export type ListJournalsResponse = ListJournalsResponses[keyof ListJournalsResponses];
+
+export type GetJournalPendingData = {
+    body?: never;
+    path?: never;
+    query?: {
+        projectId?: string;
+    };
+    url: '/journals/pending';
+};
+
+export type GetJournalPendingResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        pending: Array<{
+            projectId: string;
+            name: string;
+            dates: Array<string>;
+        }>;
+    };
+};
+
+export type GetJournalPendingResponse = GetJournalPendingResponses[keyof GetJournalPendingResponses];
+
+export type GenerateJournalsData = {
+    body: {
+        projectId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/journals/generate';
+};
+
+export type GenerateJournalsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type GenerateJournalsResponse = GenerateJournalsResponses[keyof GenerateJournalsResponses];
+
+export type RegenerateJournalsData = {
+    body: {
+        projectId: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/journals/regenerate';
+};
+
+export type RegenerateJournalsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type RegenerateJournalsResponse = RegenerateJournalsResponses[keyof RegenerateJournalsResponses];
+
+export type GetPersonalizationData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/personalization';
+};
+
+export type GetPersonalizationResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        displayName: string;
+        personality: '' | 'ctrl' | 'atm-er' | 'dior-s' | 'boss' | 'than-k' | 'oh-no' | 'gogo' | 'sexy' | 'love-r' | 'mum' | 'fake' | 'ojbk' | 'malo' | 'joker' | 'woc' | 'thin-k' | 'shit' | 'zzzz' | 'poor' | 'monk' | 'imsb' | 'solo' | 'fuck' | 'dead' | 'imfw' | 'hhhh' | 'drunk';
+    };
+};
+
+export type GetPersonalizationResponse = GetPersonalizationResponses[keyof GetPersonalizationResponses];
+
+export type SavePersonalizationData = {
+    body: {
+        displayName: string;
+        personality: '' | 'ctrl' | 'atm-er' | 'dior-s' | 'boss' | 'than-k' | 'oh-no' | 'gogo' | 'sexy' | 'love-r' | 'mum' | 'fake' | 'ojbk' | 'malo' | 'joker' | 'woc' | 'thin-k' | 'shit' | 'zzzz' | 'poor' | 'monk' | 'imsb' | 'solo' | 'fuck' | 'dead' | 'imfw' | 'hhhh' | 'drunk';
+    };
+    path?: never;
+    query?: never;
+    url: '/settings/personalization';
+};
+
+export type SavePersonalizationResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type SavePersonalizationResponse = SavePersonalizationResponses[keyof SavePersonalizationResponses];

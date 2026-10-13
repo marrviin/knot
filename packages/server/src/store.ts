@@ -36,6 +36,10 @@ function open(dataDir: string): Database.Database {
       updated_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_facts_meta_project ON facts_meta (project_id);
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
   dbDir = dataDir;
   return db;
@@ -113,6 +117,30 @@ export function deleteMeta(dataDir: string, ids: string[]): void {
   tx(ids);
 }
 
+// ---------- Settings (key/value) ----------
+// Server-owned preferences that don't belong to any single project. The display
+// layer edits them over HTTP; the journal writer reads them at generation time,
+// so a change takes effect on the next pass without a restart.
+
+/** 个人化称呼：实验日志的日记作者对用户的名字（空 = 默认写「搭档」）。 */
+export const USER_DISPLAY_NAME = 'user_display_name';
+
+/** 搭档性格：日记作者的性格底色，值为 SBTI 27 型之一的 id（空 = 默认口吻）。 */
+export const PARTNER_PERSONALITY = 'partner_personality';
+
+export function getSetting(dataDir: string, key: string): string | null {
+  const row = open(dataDir)
+    .prepare('SELECT value FROM settings WHERE key = ?')
+    .get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(dataDir: string, key: string, value: string): void {
+  open(dataDir)
+    .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .run(key, value);
+}
+
 /** created_at/updated_at by fact id for one project (missing id → absent key). */
 export function metaOf(dataDir: string, projectId: string): Map<string, { createdAt: number | null; updatedAt: number | null }> {
   const rows = open(dataDir)
@@ -128,4 +156,12 @@ export function lastUpdatedAt(dataDir: string, projectId: string): number | null
     .prepare('SELECT MAX(updated_at) AS last FROM facts_meta WHERE project_id = ?')
     .get(projectId) as { last: number | null };
   return row.last ?? null;
+}
+
+/** Local-time date (YYYY-MM-DD) of a unix-ms timestamp — journal days are the
+ *  machine's own days, not UTC. */
+export function localDate(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

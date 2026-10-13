@@ -18,7 +18,7 @@ export default async function ingestRoutes(app: FastifyInstance): Promise<void> 
         type: b.meta?.type ?? 'local-memory',
         source: b.meta?.source ?? '',
       };
-      return app.core.ingest(projectId, raw, meta, new Set(b.preferExisting ?? []));
+      return app.core.ingest(projectId, raw, meta, new Set(b.preferExisting ?? []), b.sourceMtime);
     },
   );
 }
