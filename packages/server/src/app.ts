@@ -12,6 +12,11 @@
 //! - GET    /projects/:projectId/facts                                   → {facts}
 //! - POST   /search  {projectId, query, topK?}                           → {hits:[{id,memory,score}]}
 //! - GET    /projects/:projectId/count?agent=                            → {count}
+//! - GET    /projects                                                    → {projects:[{id,name,factCount,lastUpdated}]}
+//! - DELETE /projects/:projectId                                         → {ok}
+//!
+//! Swagger: /docs (swagger-ui) + /docs/json (openapi.json) — scripts/emit-openapi.ts
+//! snapshots the latter to packages/server/openapi.json for hey-api generation.
 //!
 //! Auth: when KNOT_TOKEN is set, every route except /health requires
 //! `Authorization: Bearer <token>` — enforced by the encapsulated plugin in
@@ -23,7 +28,10 @@
 //! handler runs), and the mem0 core behind the CoreApi contract in core/.
 
 import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
 import sensible from '@fastify/sensible';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 
 import type { ServerConfig } from './config';
 import { realCore, type CoreApi } from './core';
@@ -31,6 +39,7 @@ import bearerAuth from './plugins/auth';
 import healthRoutes from './routes/health';
 import ingestRoutes from './routes/ingest';
 import factRoutes from './routes/facts';
+import projectRoutes from './routes/projects';
 import searchRoutes from './routes/search';
 
 export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): FastifyInstance {
@@ -44,6 +53,27 @@ export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): F
   app.decorate('cfg', cfg);
   app.decorate('core', coreApi);
   app.register(sensible);
+  // Renderer-direct HTTP is the contract for the display layer (desktop webview
+  // today, browser build later) — CORS keeps that reachable from a page origin.
+  app.register(cors, { origin: cfg.corsOrigin });
+  // OpenAPI 3 from the TypeBox route schemas; the committed openapi.json is the
+  // hey-api generation input, so the renderer client types track the server.
+  app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Knot memory service',
+        description: '记忆服务：facts 增删改查 + 语义搜索 + 项目注册表',
+        version: '0.2.0',
+      },
+      servers: [],
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        },
+      },
+    },
+  });
+  app.register(swaggerUi, { routePrefix: '/docs' });
 
   // /health answers without a token (the desktop parent polls it before marking
   // the child ready); everything else sits behind bearer auth when configured.
@@ -52,6 +82,7 @@ export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): F
     if (cfg.token) protectedApp.register(bearerAuth, { token: cfg.token });
     protectedApp.register(ingestRoutes);
     protectedApp.register(factRoutes);
+    protectedApp.register(projectRoutes);
     protectedApp.register(searchRoutes);
   });
 

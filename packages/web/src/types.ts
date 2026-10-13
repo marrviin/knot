@@ -16,8 +16,10 @@ export interface Fact {
   type: string;
   /** Concrete source file path */
   source: string;
-  createdAt: number;
-  updatedAt: number;
+  /** Display timestamps (unix ms) from the service's meta store — null for
+   *  facts created before it existed (UI renders "-"). */
+  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 /** Progress of the one-time existing-content import (knot://import-progress) */

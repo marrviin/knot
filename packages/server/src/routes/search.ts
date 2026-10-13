@@ -1,12 +1,12 @@
 import type { Static } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 
-import { SearchBody } from '../schemas';
+import { SearchBody, SearchResponse } from '../schemas';
 
 export default async function searchRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: Static<typeof SearchBody> }>(
     '/search',
-    { schema: { body: SearchBody } },
+    { schema: { body: SearchBody, response: { 200: SearchResponse }, operationId: 'searchMemories' } },
     async (req) => {
       const b = req.body;
       const projectId = b.projectId.trim();

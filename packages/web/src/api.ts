@@ -1,7 +1,29 @@
-/** Renderer API layer: talks to the main process via window.knot exposed by the preload.
- *  (Migrated from Tauri invoke; channel names map one-to-one to electron/ipc.ts.) */
+/** Renderer API layer. Display + facts CRUD call the memory service directly
+ *  over HTTP via the generated hey-api client (openapi.json → src/client), so
+ *  the same code path serves the desktop webview and the future browser build;
+ *  desktop-only capabilities (directory picker, MCP injection, watch rules,
+ *  settings, import events) stay on window.knot IPC from the preload.
+ *
+ *  Bootstrap: desktop calls initMemoryEndpoint() once at startup (memory_endpoint
+ *  IPC → setMemoryEndpoint); the future web build reads its saved service config
+ *  from localStorage into the same entry. */
 
 import type { Fact, Project } from "./types";
+import {
+  addFact as addFactHttp,
+  deleteFact as deleteFactHttp,
+  listFacts as listFactsHttp,
+  listProjects as listProjectsHttp,
+  registerProject as registerProjectHttp,
+  removeProject as removeProjectHttp,
+  searchMemories as searchMemoriesHttp,
+  updateFact as updateFactHttp,
+} from "./client";
+import { getMemoryEndpoint, setMemoryEndpoint } from "./api-http";
+import {
+  getSearchHistory as getSearchHistoryLocal,
+  pushSearchHistory as pushSearchHistoryLocal,
+} from "./search-history";
 
 declare global {
   interface Window {
@@ -13,34 +35,154 @@ declare global {
   }
 }
 
+// ---------- HTTP endpoint bootstrap ----------
+
+/** Connect the generated client to the memory service. Desktop: IPC returns the
+ *  child process's loopback base + per-launch bearer token. Returns false when
+ *  the service is disabled/unconfigured — callers surface the Chinese notice. */
+export async function initMemoryEndpoint(): Promise<boolean> {
+  const ep = await window.knot.invoke<{ base: string; token: string | null } | null>(
+    "memory_endpoint",
+  );
+  if (!ep) return false;
+  setMemoryEndpoint(ep);
+  return true;
+}
+
+/** Desktop post-mutation mirror sync: the main process reconciles its local
+ *  mirror store (MCP keyword search + hybrid search read it) from the service
+ *  after the renderer mutated facts over HTTP. No-op cost when nothing changed. */
+export const syncMirror = (projectId: string) =>
+  window.knot.invoke("sync_mirror", projectId);
+
+/** Throw with the standard notice when the endpoint was never bootstrapped
+ *  (service disabled in settings) — display APIs would otherwise fire requests
+ *  at an unset baseUrl. */
+function requireEndpoint(): void {
+  if (!getMemoryEndpoint()) {
+    throw new Error("记忆服务未连接（未启用或未配置）");
+  }
+}
+
 // ---------- Projects ----------
 
-/** Reserved path of the global-memory virtual project (created by the main process,
- *  pinned first, not removable); agent-level memories like hermes's land here */
+/** Reserved id of the global-memory virtual project (pinned first by the
+ *  server's registry seed, not removable); agent-level memories like hermes's land here */
 export const GLOBAL_PROJECT = "__global__";
 
-export const listProjects = () =>
-  window.knot.invoke<Project[]>("list_projects");
+interface ServerProject {
+  id: string;
+  name: string;
+  factCount: number;
+  lastUpdated: number | null;
+}
 
-export const addProject = (path: string) =>
-  window.knot.invoke<Project>("add_project", path);
+function mapProject(p: ServerProject): Project {
+  return { path: p.id, name: p.name, factCount: p.factCount, lastUpdated: p.lastUpdated };
+}
 
-export const removeProject = (path: string) =>
-  window.knot.invoke("remove_project", path);
+export async function listProjects(): Promise<Project[]> {
+  requireEndpoint();
+  const { data } = await listProjectsHttp();
+  if (!data) throw new Error("项目列表加载失败");
+  // Server rows are insertion-ordered; the reserved global project pins first
+  // regardless of when it was seeded (same order the desktop mirror used).
+  const rows = data.projects.map(mapProject);
+  const globalIdx = rows.findIndex((p) => p.path === GLOBAL_PROJECT);
+  if (globalIdx > 0) rows.unshift(...rows.splice(globalIdx, 1));
+  return rows;
+}
+
+/** True when running inside the desktop shell (preload bridge present); the
+ *  browser build has no window.knot and skips the desktop-only IPC calls. */
+const hasDesktopBridge = () =>
+  typeof (globalThis as { knot?: unknown }).knot !== "undefined";
+
+/** Register a directory as a project. Desktop: IPC resolves the canonical path
+ *  (realpath), wires the file watcher and kicks the one-time existing-content
+ *  import; the service registry is then updated with the resolved path so the
+ *  sidebar (served from GET /projects) shows it before the first ingest lands.
+ *  Browser build: registry registration only (name derived from the path tail). */
+export async function addProject(path: string): Promise<Project> {
+  if (hasDesktopBridge()) {
+    const project = await window.knot.invoke<Project>("add_project", path);
+    requireEndpoint();
+    const { error } = await registerProjectHttp({ body: { projectId: project.path } });
+    if (error) throw error;
+    return project;
+  }
+  requireEndpoint();
+  const { data, error } = await registerProjectHttp({ body: { projectId: path } });
+  if (error) throw error;
+  if (!data) throw new Error("项目注册失败");
+  return mapProject(data);
+}
+
+/** Remove a project and its facts. Server DELETE is the truth source (registry
+ *  row + every fact in the vector store); desktop IPC additionally drops the
+ *  mirror rows and the project's watch roots. */
+export async function removeProject(path: string): Promise<void> {
+  requireEndpoint();
+  const { error } = await removeProjectHttp({ path: { projectId: path } });
+  if (error) throw error;
+  if (hasDesktopBridge()) await window.knot.invoke("remove_project", path);
+}
 
 // ---------- Facts ----------
 
-export const listFacts = (projectId: string) =>
-  window.knot.invoke<Fact[]>("list_facts", projectId);
+interface ServerFact {
+  id: string;
+  memory: string;
+  metadata?: Record<string, string> | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
 
-export const addFact = (projectId: string, content: string) =>
-  window.knot.invoke("add_fact", projectId, content);
+function mapFact(projectId: string, f: ServerFact): Fact {
+  return {
+    id: f.id,
+    projectId,
+    content: f.memory,
+    agent: f.metadata?.agent ?? "",
+    type: f.metadata?.type ?? "",
+    source: f.metadata?.source ?? "",
+    // Null for pre-meta facts — the UI renders "-" (formatTime is never called on 0).
+    createdAt: f.createdAt ?? null,
+    updatedAt: f.updatedAt ?? null,
+  };
+}
 
-export const updateFact = (id: string, projectId: string, content: string) =>
-  window.knot.invoke("update_fact", id, projectId, content);
+export async function listFacts(projectId: string): Promise<Fact[]> {
+  requireEndpoint();
+  const { data } = await listFactsHttp({ path: { projectId } });
+  if (!data) throw new Error("记忆列表加载失败");
+  return data.facts.map((f) => mapFact(projectId, f));
+}
 
-export const deleteFact = (id: string, projectId: string) =>
-  window.knot.invoke("delete_fact", id, projectId);
+export async function addFact(projectId: string, content: string): Promise<void> {
+  requireEndpoint();
+  const { error } = await addFactHttp({ body: { projectId, content } });
+  if (error) throw error;
+  await syncMirror(projectId);
+}
+
+export async function updateFact(
+  id: string,
+  projectId: string,
+  content: string,
+): Promise<void> {
+  requireEndpoint();
+  const { error } = await updateFactHttp({ path: { id }, body: { content } });
+  if (error) throw error;
+  await syncMirror(projectId);
+}
+
+export async function deleteFact(id: string, projectId: string): Promise<void> {
+  requireEndpoint();
+  const { error } = await deleteFactHttp({ path: { id } });
+  if (error) throw error;
+  await syncMirror(projectId);
+}
 
 // ---------- MCP config injection ----------
 // Per-agent (claude-code / joycode): writes each agent's user-level mcpServers config.
@@ -122,14 +264,14 @@ export const getLastProject = () =>
 export const setLastProject = (path: string) =>
   window.knot.invoke("set_last_project", path);
 
-// ---------- Search history (per project, last 10) ----------
+// ---------- Search history (per project, last 10; localStorage) ----------
 
 export const getSearchHistory = (projectId: string) =>
-  window.knot.invoke<string[]>("get_search_history", projectId);
+  Promise.resolve(getSearchHistoryLocal(projectId));
 
 /** Move query to the front of the project's history (dedupe, cap 10) and persist */
 export const pushSearchHistory = (projectId: string, query: string) =>
-  window.knot.invoke<string[]>("push_search_history", projectId, query);
+  Promise.resolve(pushSearchHistoryLocal(projectId, query));
 
 // ---------- Memory watch rules ----------
 
@@ -155,7 +297,7 @@ export const saveWatchRules = (rules: WatchRule[]) =>
 export const pickDirectory = () =>
   window.knot.invoke<string | null>("pick_directory");
 
-// ---------- mem0 semantic search ----------
+// ---------- Semantic search (service /search) ----------
 
 export interface SemanticHit {
   id: string;
@@ -170,8 +312,26 @@ export interface SemanticHit {
   updatedAt?: number;
 }
 
-export const searchMemories = (projectId: string, query: string) =>
-  window.knot.invoke<SemanticHit[]>("semantic_search", projectId, query);
+export async function searchMemories(
+  projectId: string,
+  query: string,
+): Promise<SemanticHit[]> {
+  requireEndpoint();
+  const { data } = await searchMemoriesHttp({ body: { projectId, query } });
+  if (!data) throw new Error("检索失败");
+  return data.hits.map((h) => ({
+    id: h.id,
+    memory: h.memory,
+    // Service score is the embedding cosine; the BM25 half of the old desktop
+    // hybrid path lives in the main process (MCP search) — display search uses
+    // the service's semantic ranking.
+    semanticScore: h.score,
+    agent: h.agent,
+    type: h.type,
+    source: h.source,
+    updatedAt: h.updatedAt ?? undefined,
+  }));
+}
 
 // ---------- External links ----------
 

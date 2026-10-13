@@ -15,6 +15,9 @@ export interface ServerConfig {
   dataDir: string;
   /** Optional bearer token; null = no auth (local loopback child process). */
   token: string | null;
+  /** Access-Control-Allow-Origin: true reflects the request origin (local
+   *  renderer / file:// builds); a remote deployment pins an explicit origin. */
+  corsOrigin: boolean | string;
   llm: LlmConfig | null;
 }
 
@@ -38,6 +41,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     dataDir: (env.KNOT_DATA_DIR ?? '').trim() || 'data',
     // Local mode: the parent generates an ephemeral token per launch; Docker: set KNOT_TOKEN.
     token: (env.KNOT_TOKEN ?? '').trim() || null,
+    // CORS: true = reflect any origin (default — the desktop renderer is a local
+    // page); remote deployments set KNOT_CORS_ORIGIN to a pinned origin.
+    corsOrigin: ((env.KNOT_CORS_ORIGIN ?? '').trim() || true) as boolean | string,
     llm: llmFromEnv(env),
   };
 }

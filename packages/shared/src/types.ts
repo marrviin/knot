@@ -19,6 +19,10 @@ export interface FactItem {
   id: string;
   memory: string;
   metadata?: Record<string, string>;
+  /** Display timestamps (unix ms), owned by the server's meta store. null/absent
+   *  for facts created before the meta store existed — UI renders "-". */
+  createdAt?: number | null;
+  updatedAt?: number | null;
 }
 
 /** Diff report between the project's pre- and post-mutation truth state. */

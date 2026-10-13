@@ -27,6 +27,13 @@ export interface CoreApi {
   listFacts(projectId: string): Promise<FactItem[]>;
   semanticSearch(projectId: string, query: string, topK: number): Promise<SemanticHit[]>;
   countByAgent(projectId: string, agent: string): Promise<number>;
+  /** Project registry (server-side meta store) + display stats. */
+  listProjects(): Promise<{ id: string; name: string; factCount: number; lastUpdated: number | null }[]>;
+  registerProject(
+    projectId: string,
+    name?: string,
+  ): Promise<{ id: string; name: string; factCount: number; lastUpdated: number | null }>;
+  removeProject(projectId: string): Promise<void>;
   shutdown(): void;
 }
 
@@ -43,6 +50,9 @@ export function realCore(cfg: ServerConfig): CoreApi {
     semanticSearch: (projectId, query, topK) =>
       core.semanticSearch(cfg.llm, cfg.dataDir, projectId, query, topK),
     countByAgent: (projectId, agent) => core.countByAgent(cfg.llm, cfg.dataDir, projectId, agent),
+    listProjects: () => core.listProjects(cfg.llm, cfg.dataDir),
+    registerProject: (projectId, name) => core.registerProject(cfg.llm, cfg.dataDir, projectId, name),
+    removeProject: (projectId) => core.removeProject(cfg.llm, cfg.dataDir, projectId),
     shutdown: () => core.shutdown(),
   };
 }

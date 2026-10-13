@@ -259,30 +259,3 @@ describe('settings kv', () => {
   });
 });
 
-describe('search history (per project, last 10)', () => {
-  it('pushes, moves repeats to the front, caps at 10', () => {
-    expect(store.getSearchHistory('/tmp/p1')).toEqual([]);
-    for (let i = 0; i < 12; i++) store.pushSearchHistory('/tmp/p1', `q${i}`);
-    expect(store.getSearchHistory('/tmp/p1')).toHaveLength(10);
-    expect(store.getSearchHistory('/tmp/p1')[0]).toBe('q11');
-    // re-push moves the query to the front without duplicating it
-    store.pushSearchHistory('/tmp/p1', 'q5');
-    const h = store.getSearchHistory('/tmp/p1');
-    expect(h[0]).toBe('q5');
-    expect(h.filter((x) => x === 'q5')).toHaveLength(1);
-    // a blank query is a no-op
-    store.pushSearchHistory('/tmp/p1', '   ');
-    expect(store.getSearchHistory('/tmp/p1')[0]).toBe('q5');
-    // histories are isolated per project
-    expect(store.getSearchHistory('/tmp/p2')).toEqual([]);
-  });
-
-  it('is dropped with the project', () => {
-    store.insertProject('/tmp/p1');
-    store.pushSearchHistory('/tmp/p1', '语义检索');
-    store.pushSearchHistory('/tmp/other', '保留');
-    store.removeProject('/tmp/p1');
-    expect(store.getSearchHistory('/tmp/p1')).toEqual([]);
-    expect(store.getSearchHistory('/tmp/other')).toEqual(['保留']);
-  });
-});

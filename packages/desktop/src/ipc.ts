@@ -26,9 +26,26 @@ export function registerIpc(ctx: IpcContext): void {
     }
   };
 
-  // ---------- Projects ----------
+  // ---------- Memory service endpoint (renderer-direct HTTP) ----------
 
-  ipcMain.handle("list_projects", () => ok(() => store.listProjects()));
+  // Display + facts CRUD now go renderer → service over HTTP (generated hey-api
+  // client); this hands the renderer the child process's loopback base + token.
+  // Re-invoking retries the lazy spawn, so the renderer can re-bootstrap after
+  // settings changes without an app restart.
+  ipcMain.handle("memory_endpoint", async () => {
+    const conn = await mem0.ensureMemory(ctx.userDataDir);
+    if (!conn) throw new Error("记忆服务未连接（未启用或未配置）");
+    return { base: conn.base, token: conn.token };
+  });
+
+  // Mirror reconciliation after a renderer-direct HTTP mutation: the local
+  // mirror store (MCP keyword search + hybrid search read it) must track the
+  // service's truth. restoreMirror is a pure sync (facts diff, no LLM).
+  ipcMain.handle("sync_mirror", (_e, projectId: string) =>
+    ok(() => mem0.restoreMirror(projectId)),
+  );
+
+  // ---------- Projects ----------
 
   ipcMain.handle("add_project", async (_e, path: string) => {
     log(`add_project: 收到路径 ${path}`);
@@ -72,39 +89,9 @@ export function registerIpc(ctx: IpcContext): void {
   );
 
   // ---------- Facts ----------
-
-  ipcMain.handle("list_facts", (_e, projectId: string) =>
-    ok(() => store.listFacts(projectId)),
-  );
-
-  ipcMain.handle("add_fact", async (_e, projectId: string, content: string) => {
-    const trimmed = content.trim();
-    if (!trimmed) throw new Error("记忆内容不能为空");
-    const report = await mem0.addManualMemory(
-      ctx.userDataDir,
-      projectId,
-      trimmed,
-    );
-    ctx.onFactsChanged({ path: projectId, ...report });
-  });
-
-  ipcMain.handle(
-    "update_fact",
-    async (_e, id: string, projectId: string, content: string) => {
-      const trimmed = content.trim();
-      if (!trimmed) throw new Error("记忆内容不能为空");
-      // updateMemory throws when mem0 fails — the mirror must not diverge from the
-      // truth source (a diverged "success" resurrects old content on the next sync).
-      await mem0.updateMemory(ctx.userDataDir, id, trimmed);
-      ctx.onFactsChanged({ path: projectId, added: 0 });
-    },
-  );
-
-  ipcMain.handle("delete_fact", async (_e, id: string, projectId: string) => {
-    await mem0.removeMemory(ctx.userDataDir, id);
-    ctx.onFactsChanged({ path: projectId, deleted: 1 });
-    return null;
-  });
+  // No IPC handlers: the renderer calls the memory service directly over HTTP
+  // (api.ts → hey-api client) and follows up with sync_mirror so this process's
+  // local mirror stays aligned for MCP keyword search.
 
   // ---------- MCP config injection ----------
   // One set of channels per target agent (claude-code / joycode): the agent id is
@@ -221,15 +208,6 @@ export function registerIpc(ctx: IpcContext): void {
   );
   ipcMain.handle("set_last_project", (_e, path: string) =>
     ok(() => store.setSetting("last_project", path)),
-  );
-
-  // ---------- Search history (per project, renderer search box) ----------
-
-  ipcMain.handle("get_search_history", (_e, projectId: string) =>
-    ok(() => store.getSearchHistory(projectId)),
-  );
-  ipcMain.handle("push_search_history", (_e, projectId: string, query: string) =>
-    ok(() => store.pushSearchHistory(projectId, query)),
   );
 
   // ---------- Memory watch rules ----------

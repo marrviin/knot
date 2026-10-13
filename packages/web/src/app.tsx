@@ -95,7 +95,7 @@ export default function App() {
 }
 
 function Shell() {
-  const { message } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]);
@@ -129,6 +129,33 @@ function Shell() {
       .catch((e) => notify(`加载项目失败: ${e}`, "error"));
   }, [notify]);
 
+  // Bootstrap the renderer-direct HTTP endpoint before the first display load:
+  // the main process spawns (or reconnects to) the memory service and hands
+  // back its loopback base + per-launch token. A disabled service shows the
+  // notice once instead of per-request errors. Re-run when the settings modal
+  // closes — enabling/reconfiguring the service takes effect immediately, and
+  // ensureMemory re-validates the connection on every call.
+  const reconnectMemory = useCallback(
+    (opts: { quiet?: boolean } = {}) => {
+      api
+        .initMemoryEndpoint()
+        .then((ok) => {
+          if (!ok && !opts.quiet)
+            notify("记忆服务未启用，请在设置中配置并启用", "error");
+          reloadProjects();
+        })
+        .catch((e) => {
+          if (!opts.quiet) notify(`记忆服务连接失败: ${e}`, "error");
+        });
+    },
+    [notify, reloadProjects],
+  );
+
+  useEffect(() => {
+    reconnectMemory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Request sequence guard: during an import storm (facts-changed per file) the user
   // can switch projects — a late response for the old project must not overwrite the
   // new project's facts (stale data shown under the wrong panel header).
@@ -146,10 +173,6 @@ function Shell() {
         if (seq === factsReqRef.current) setFacts([]);
       });
   }, []);
-
-  useEffect(() => {
-    reloadProjects();
-  }, [reloadProjects]);
 
   // Restore last opened project at startup: wait for the project list to load before
   // reading the stored value, to avoid restoring a removed project. Don't write until
@@ -267,14 +290,26 @@ function Shell() {
   };
 
   const removeProject = async (project: Project) => {
-    try {
-      await api.removeProject(project.path);
-      if (activePath === project.path) setActivePath(null);
-      reloadProjects();
-      notify(`已移除项目「${project.name}」`);
-    } catch (e) {
-      notify(`移除失败: ${e}`, "error");
-    }
+    // Removal now deletes the project's memories on the service too (registry
+    // row + every fact in the vector store) — irreversible, so confirm with
+    // the consequence spelled out.
+    modal.confirm({
+      title: `移除项目「${project.name}」？`,
+      content: "该项目在记忆服务中的全部记忆（含向量）将被一并删除，此操作不可恢复。",
+      okText: "删除并移除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.removeProject(project.path);
+          if (activePath === project.path) setActivePath(null);
+          reloadProjects();
+          notify(`已移除项目「${project.name}」`);
+        } catch (e) {
+          notify(`移除失败: ${e}`, "error");
+        }
+      },
+    });
   };
 
   const active = projects.find((p) => p.path === activePath) ?? null;
@@ -435,7 +470,12 @@ function Shell() {
 
       <SettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          // Service enable/mode/URL changes in settings take effect in the main
+          // process immediately — pick up the (possibly new) endpoint here.
+          reconnectMemory({ quiet: true });
+        }}
         onNotify={notify}
       />
     </div>
@@ -866,7 +906,7 @@ function FactCard({ fact }: { fact: Fact }) {
         agent={fact.agent}
         type={fact.type}
         source={fact.source}
-        time={formatTime(fact.updatedAt)}
+        time={fact.updatedAt ? formatTime(fact.updatedAt) : undefined}
       />
     </div>
   );

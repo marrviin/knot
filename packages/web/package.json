@@ -7,11 +7,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate:api": "openapi-ts -i ../server/openapi.json -o src/client"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",
     "@ant-design/icons": "^6.3.2",
+    "@hey-api/client-fetch": "^0.13.1",
     "@knot/shared": "workspace:*",
     "antd": "^6.6.2",
     "classnames": "^2.5.1",
@@ -19,6 +21,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.90.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

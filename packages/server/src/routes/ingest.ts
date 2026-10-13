@@ -1,12 +1,12 @@
 import type { Static } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 
-import { IngestBody } from '../schemas';
+import { IngestBody, IngestResponse } from '../schemas';
 
 export default async function ingestRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: Static<typeof IngestBody> }>(
     '/ingest',
-    { schema: { body: IngestBody } },
+    { schema: { body: IngestBody, response: { 200: IngestResponse }, operationId: 'ingestFacts' } },
     async (req) => {
       const b = req.body;
       const projectId = b.projectId.trim();

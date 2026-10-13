@@ -246,8 +246,6 @@ export function removeProject(p: string): void {
   conn
     .prepare("DELETE FROM settings WHERE key LIKE 'bootstrap_done:%' AND key LIKE '%' || ?")
     .run(`:${p}`);
-  // Same for the per-project search history (renderer search box).
-  conn.prepare('DELETE FROM settings WHERE key = ?').run(searchHistoryKey(p));
 }
 
 export function projectExists(p: string): boolean {
@@ -489,32 +487,6 @@ export function setSetting(key: string, value: string): void {
 
 export function deleteSetting(key: string): void {
   get().prepare('DELETE FROM settings WHERE key = ?').run(key);
-}
-
-// ---------- Search history (per project, renderer search box) ----------
-
-const searchHistoryKey = (projectId: string) => `search_history:${projectId}`;
-const SEARCH_HISTORY_LIMIT = 10;
-
-export function getSearchHistory(projectId: string): string[] {
-  const raw = getSetting(searchHistoryKey(projectId));
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Move query to the front of the project's history (dedupe), cap at 10 entries,
- *  persist; returns the new list. A blank query is a no-op. */
-export function pushSearchHistory(projectId: string, query: string): string[] {
-  const q = query.trim();
-  if (!q) return getSearchHistory(projectId);
-  const next = [q, ...getSearchHistory(projectId).filter((x) => x !== q)].slice(0, SEARCH_HISTORY_LIMIT);
-  setSetting(searchHistoryKey(projectId), JSON.stringify(next));
-  return next;
 }
 
 /** Read settings from the legacy Tauri database (for one-time migration) */
