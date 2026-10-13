@@ -41,8 +41,13 @@ import pkg from "../package.json";
 
 type Notify = (message: string, type?: "info" | "error") => void;
 
+/** Unified settings-card shell shared by the watch and connector panes' card
+ *  lists (32px icon + title/desc column + trailing toggle). */
+const CARD =
+  "flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3";
+
 const TABS = [
-  { key: "general", label: "记忆提炼", icon: <ExperimentOutlined /> },
+  { key: "general", label: "记忆服务", icon: <ExperimentOutlined /> },
   { key: "watch", label: "记忆监听", icon: <ApiOutlined /> },
   { key: "connector", label: "连接器", icon: <LinkOutlined /> },
   { key: "about", label: "关于", icon: <InfoCircleOutlined /> },
@@ -108,7 +113,7 @@ export function SettingsModal({
           {/* pointer-events-none: clicks pass through to the Modal's close button (top-right of this strip). */}
           <div className="pc-settings-header pointer-events-none flex h-[54px] shrink-0 items-center px-6">
             <h3 className="m-0 text-md font-semibold">
-              {TABS.find((t) => t.key === pane)?.label ?? "记忆提炼"}
+              {TABS.find((t) => t.key === pane)?.label ?? "记忆服务"}
             </h3>
           </div>
           <div className="box-border min-h-0 min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
@@ -194,11 +199,12 @@ function FormField({
   );
 }
 
-/** "Extraction" pane, restyled after joybuddy's settings-model tab: an immediately-persisted
- *  enable toggle + the LLM service shown as a model card (icon + name + model tag, dashed
- *  footer with the endpoint), editing opens a modal form with a preset dropdown (MiniMax / OpenAI / 硅基流动 / 自定义) and dirty-gated save that auto-closes on success. */
+/** "Memory service" pane: an immediately-persisted storage-mode selector (local child
+ *  service / user-deployed remote) + the model service shown as a card, editing opens a
+ *  modal form with a preset dropdown and dirty-gated save that auto-closes on success.
+ *  No enable toggle: every feature behind the service (project panel, search, watching,
+ *  MCP) is core — the service connects whenever it's configured. */
 function GeneralPane({ onNotify }: { onNotify: Notify }) {
-  const [enabled, setEnabled] = useState(false);
   const [protocol, setProtocol] = useState<"minimax" | "openai">("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
@@ -231,7 +237,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
     api
       .getSettings()
       .then((s) => {
-        setEnabled(s.enabled);
         setProtocol(s.provider);
         setBaseUrl(s.baseUrl);
         setModel(s.model);
@@ -244,19 +249,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
       .catch((e) => onNotify(`加载设置失败: ${e?.message ?? e}`, "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /** 启用开关即时持久化（对齐 joybuddy/WatchPane 的开关即存交互）；失败回滚 UI。 */
-  const toggleEnabled = async (next: boolean) => {
-    const prev = enabled;
-    setEnabled(next);
-    try {
-      await api.saveSettings(next, baseUrl, null, model, protocol, embedModel, mode, remoteUrl, null);
-      onNotify(next ? "已启用 LLM 智能提炼" : "已停用 LLM 智能提炼");
-    } catch (e) {
-      setEnabled(prev);
-      onNotify(`保存失败: ${e}`, "error");
-    }
-  };
 
   const openEdit = () => {
     setDraft({
@@ -291,7 +283,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
     try {
       const key = draft.apiKeyTouched ? draft.apiKey.trim() : null;
       const notice = await api.saveSettings(
-        enabled,
         url,
         key,
         name,
@@ -309,7 +300,7 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
       closeEdit();
       // 主进程在 embedding 模型变更时会带回向量失效警告——原样展示。
       onNotify(
-        typeof notice === "string" && notice ? notice : "记忆提炼配置已保存",
+        typeof notice === "string" && notice ? notice : "模型服务配置已保存",
       );
     } catch (e) {
       onNotify(`保存失败: ${e}`, "error");
@@ -325,7 +316,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
     setMode(next);
     try {
       await api.saveSettings(
-        enabled,
         baseUrl,
         null,
         model,
@@ -335,7 +325,9 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
         remoteUrl,
         null,
       );
-      onNotify(next === "remote" ? "已切换到远程记忆服务" : "已切换回本地记忆服务");
+      onNotify(
+        next === "remote" ? "已切换到远程记忆服务" : "已切换回本地记忆服务",
+      );
     } catch (e) {
       setMode(prev);
       onNotify(`保存失败: ${e}`, "error");
@@ -345,7 +337,16 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
   /** Blur-save the service address (fire-and-persist, same pattern as the toggle). */
   const saveRemoteUrl = async () => {
     try {
-      await api.saveSettings(enabled, baseUrl, null, model, protocol, embedModel, "remote", remoteUrl, null);
+      await api.saveSettings(
+        baseUrl,
+        null,
+        model,
+        protocol,
+        embedModel,
+        "remote",
+        remoteUrl,
+        null,
+      );
     } catch (e) {
       onNotify(`保存失败: ${e}`, "error");
     }
@@ -358,7 +359,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
     if (!t && !hasRemoteToken) return;
     try {
       await api.saveSettings(
-        enabled,
         baseUrl,
         null,
         model,
@@ -387,13 +387,19 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
     }
     setTesting(true);
     try {
-      const r = await api.testMemoryConnection(base, remoteToken.trim() || null);
+      const r = await api.testMemoryConnection(
+        base,
+        remoteToken.trim() || null,
+      );
       if (!r.ok) {
         onNotify(r.error ?? "连接失败", "error");
         return;
       }
       if (!r.ready) {
-        onNotify(r.notice ?? "服务可达，但 LLM 未配置（提炼与语义检索不可用）", "error");
+        onNotify(
+          r.notice ?? "服务可达，但 Embedding 未配置（语义检索不可用）",
+          "error",
+        );
         return;
       }
       onNotify(
@@ -425,23 +431,10 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="m-0 mt-1 text-xs leading-5 text-muted">
-        配置大模型服务（MiniMax 或任意 OpenAI 兼容服务）后，导入记忆时会用 LLM
-        提炼硬核事实、语义去重并裁决新旧冲突；
-        记忆与向量全部只存本地，仅提炼与语义检索时调用该服务。未启用或未配置时不会自动提炼，仅支持手动添加记忆与关键词检索。
+        面板展示、检索、监听导入与 MCP 共享记忆均经由记忆服务完成；配置 OpenAI
+        兼容服务（含
+        MiniMax）后提供语义去重与语义检索，数据全部留在本地。未配置时不调用任何模型，仅支持手动添加与关键词检索。
       </p>
-
-      {/* 启用开关行 —— 即时保存（toggleEnabled），不再挂在底部「保存」上。 */}
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-[13px] font-medium text-fg">
-            启用 LLM 智能提炼
-          </div>
-          <div className="mt-0.5 text-xs text-muted">
-            关闭后不调用 LLM，监听与存量导入都会暂停
-          </div>
-        </div>
-        <Switch checked={enabled} onChange={(v) => void toggleEnabled(v)} />
-      </div>
 
       {/* 记忆存储模式：本地子进程（默认，数据在 userData）或用户自部署的 server/ 远程服务。
           两种模式共用同一套 HTTP 客户端，只是地址不同；切换即时保存，失败回滚。 */}
@@ -449,7 +442,9 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
         <div className="text-xs font-semibold text-muted">记忆存储</div>
         <Radio.Group
           value={mode}
-          onChange={(e) => void switchMode(e.target.value as "local" | "remote")}
+          onChange={(e) =>
+            void switchMode(e.target.value as "local" | "remote")
+          }
           optionType="button"
           buttonStyle="solid"
           options={[
@@ -461,8 +456,9 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
         {mode === "remote" && (
           <div className="flex flex-col gap-3 rounded-[10px] bg-panel px-5 py-4">
             <p className="m-0 text-xs leading-5 text-muted">
-              填写自行部署的 Knot 记忆服务地址（server/ 目录提供 Dockerfile）。远程模式下记忆与向量全部存在服务端，
-              本机仅保留展示镜像；服务不可达时提炼与语义检索会直接报错，不会降级写本地。
+              填写自行部署的 Knot 记忆服务地址（server/ 目录提供
+              Dockerfile）。远程模式下记忆与向量全部存在服务端，
+              本机仅保留展示镜像；服务不可达时语义检索与导入会直接报错，不会降级写本地。
             </p>
             <FormField label="服务地址">
               <Input
@@ -475,7 +471,11 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
             </FormField>
             <FormField
               label="访问令牌"
-              desc={hasRemoteToken ? "已配置，留空保持不变" : "服务未设置令牌时可留空"}
+              desc={
+                hasRemoteToken
+                  ? "已配置，留空保持不变"
+                  : "服务未设置令牌时可留空"
+              }
             >
               <Input.Password
                 value={remoteToken}
@@ -485,7 +485,11 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
               />
             </FormField>
             <div>
-              <Button icon={<ApiOutlined />} loading={testing} onClick={() => void testConnection()}>
+              <Button
+                icon={<ApiOutlined />}
+                loading={testing}
+                onClick={() => void testConnection()}
+              >
                 测试连接
               </Button>
             </div>
@@ -494,94 +498,106 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
       </section>
 
       {mode === "local" && (
-      <>
-      {/* 服务配置横幅（对齐 joybuddy 的「自定义模型」区）：说明 + 常驻主按钮入口。
-          记忆提炼只有一套模型配置，已配置时按钮转为编辑同一份配置。 */}
-      <section className="flex flex-col gap-3">
-        <div className="text-xs font-semibold text-muted">服务配置</div>
-        <div className="flex items-center justify-between gap-4 rounded-[10px] bg-panel px-5 py-4">
-          <div className="min-w-0">
-            <div className="text-[14px] font-medium text-fg">提炼模型</div>
-            <div className="mt-1 text-[13px] text-muted">
-              管理保存在本地的记忆提炼模型服务，导入记忆与检索时调用。
-            </div>
-          </div>
-          <Button
-            type="primary"
-            icon={baseUrl || model ? <EditOutlined /> : <PlusOutlined />}
-            onClick={openEdit}
-            className="shrink-0"
-          >
-            {baseUrl || model ? "编辑配置" : "配置模型"}
-          </Button>
-        </div>
-      </section>
-
-      {/* 当前配置（对齐 joybuddy 的「已保存模型」区）：模型卡片，整卡可点进编辑。 */}
-      <section className="flex flex-col gap-3">
-        <div className="text-xs font-semibold text-muted">当前配置</div>
-        {baseUrl || model ? (
-          <div
-            className="cursor-pointer rounded-xl border border-line bg-surface transition-colors hover:border-accent"
-            onClick={openEdit}
-          >
-            <div className="flex items-center gap-3 px-4 pb-3 pt-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-bg">
-                <ExperimentOutlined className="text-accent" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-fg">
-                    {protocol === "openai"
-                      ? "OpenAI 兼容提炼服务"
-                      : "MiniMax 提炼服务"}
-                  </span>
-                  {model && (
-                    <Tag bordered={false} className="m-0 shrink-0 text-muted">
-                      {model}
-                    </Tag>
-                  )}
-                  {embedModel && (
-                    <Tag bordered={false} className="m-0 shrink-0 text-muted">
-                      {embedModel}
-                    </Tag>
-                  )}
-                </div>
-                <div className="mt-0.5 text-xs text-muted">
-                  {hasApiKey ? "API Key 已配置" : "未配置 API Key"}
+        <>
+          {/* 服务配置横幅：说明 + 常驻主按钮入口。只有一套模型服务配置，已配置时按钮转为编辑同一份配置。 */}
+          <section className="flex flex-col gap-3">
+            <div className="text-xs font-semibold text-muted">服务配置</div>
+            <div className="flex items-center justify-between gap-4 rounded-[10px] bg-panel px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-[14px] font-medium text-fg">模型服务</div>
+                <div className="mt-1 text-[13px] text-muted">
+                  管理记忆服务连接的模型 API，语义去重与语义检索时调用 Embedding
+                  接口。
                 </div>
               </div>
               <Button
-                icon={<EditOutlined />}
-                className="shrink-0"
+                type="primary"
+                icon={baseUrl || model ? <EditOutlined /> : <PlusOutlined />}
                 onClick={openEdit}
+                className="shrink-0"
               >
-                编辑
+                {baseUrl || model ? "编辑配置" : "配置模型"}
               </Button>
             </div>
-            <div className="flex items-center gap-1.5 border-0 border-t border-dashed border-line px-4 py-2.5 font-mono text-[11px] text-muted">
-              <LinkOutlined className="shrink-0" />
-              <span className="truncate">{baseUrl || "未设置服务地址"}</span>
-            </div>
-          </div>
-        ) : (
-          <Empty
-            description="还没有配置提炼模型"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            className="my-6"
-          >
-            <Button type="primary" icon={<PlusOutlined />} onClick={openEdit}>
-              配置模型
-            </Button>
-          </Empty>
-        )}
-      </section>
-      </>
+          </section>
+
+          {/* 当前配置（对齐 joybuddy 的「已保存模型」区）：模型卡片，整卡可点进编辑。 */}
+          <section className="flex flex-col gap-3">
+            <div className="text-xs font-semibold text-muted">当前配置</div>
+            {baseUrl || model ? (
+              <div
+                className="cursor-pointer rounded-xl border border-line bg-surface transition-colors hover:border-accent"
+                onClick={openEdit}
+              >
+                <div className="flex items-center gap-3 px-4 pb-3 pt-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-bg">
+                    <ExperimentOutlined className="text-accent" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium text-fg">
+                        {protocol === "openai"
+                          ? "OpenAI 兼容服务"
+                          : "MiniMax 服务"}
+                      </span>
+                      {model && (
+                        <Tag
+                          bordered={false}
+                          className="m-0 shrink-0 text-muted"
+                        >
+                          {model}
+                        </Tag>
+                      )}
+                      {embedModel && (
+                        <Tag
+                          bordered={false}
+                          className="m-0 shrink-0 text-muted"
+                        >
+                          {embedModel}
+                        </Tag>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted">
+                      {hasApiKey ? "API Key 已配置" : "未配置 API Key"}
+                    </div>
+                  </div>
+                  <Button
+                    icon={<EditOutlined />}
+                    className="shrink-0"
+                    onClick={openEdit}
+                  >
+                    编辑
+                  </Button>
+                </div>
+                <div className="flex items-center gap-1.5 border-0 border-t border-dashed border-line px-4 py-2.5 font-mono text-[11px] text-muted">
+                  <LinkOutlined className="shrink-0" />
+                  <span className="truncate">
+                    {baseUrl || "未设置服务地址"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <Empty
+                description="还没有配置模型服务"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                className="my-6"
+              >
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={openEdit}
+                >
+                  配置模型
+                </Button>
+              </Empty>
+            )}
+          </section>
+        </>
       )}
 
       {/* 编辑弹窗（对齐 joybuddy 的 ModelForm + 弹窗交互）：预设下拉 + 脏检测，保存成功自动关闭。 */}
       <Modal
-        title={isNew ? "配置提炼模型" : "编辑提炼模型"}
+        title={isNew ? "配置模型服务" : "编辑模型服务"}
         open={!!draft}
         onCancel={closeEdit}
         width={480}
@@ -746,7 +762,11 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
 
   if (!rules) return <p className="m-0 text-xs text-muted">加载中…</p>;
 
-  const builtins = rules.filter((r) => r.builtin);
+  // Builtin cards render alphabetically by agent regardless of stored order;
+  // custom cards keep the user's own ordering.
+  const builtins = rules
+    .filter((r) => r.builtin)
+    .sort((a, b) => a.agent.localeCompare(b.agent));
   const customs = rules.filter((r) => !r.builtin);
 
   // Local-only state change (text inputs update on every keystroke; persisted on blur).
@@ -798,14 +818,10 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
     <div className="flex flex-col gap-4">
       <div className="mt-1 flex items-start justify-between gap-4">
         <p className="m-0 flex-1 text-xs leading-5 text-muted">
-          每个 Agent
-          一张卡片，打开开关即监听其记忆文件，新增或修改的记忆经提炼后自动入库。
-          自定义卡片的匹配表达式用逗号分隔多个条目，支持 <code>*</code> /{" "}
-          <code>**</code> 通配符； 相对路径按每个已登记项目的根目录展开，
-          <code>&lt;slug&gt;</code> 展开为项目路径 slug， 绝对路径（~
-          开头）不落在任何项目内时归入「全局记忆」。
-          <code>MEMORY.md</code> 默认按索引文件跳过（hermes
-          等以它为正文的卡片除外）。
+          监听各 Agent
+          的记忆文件，变更内容经提炼后自动写入记忆库；匹配表达式支持{" "}
+          <code>*</code> / <code>**</code> 通配符与 <code>&lt;slug&gt;</code>{" "}
+          展开。
         </p>
         <Button
           type="primary"
@@ -817,16 +833,9 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
         </Button>
       </div>
 
-      <div className="text-xs font-semibold text-muted">内置 Agent</div>
       {builtins.map((r) => (
-        <div
-          key={r.id}
-          className={cx(
-            "flex items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 transition-opacity",
-            !r.enabled && "opacity-55",
-          )}
-        >
-          <AgentIcon agent={r.agent} />
+        <div key={r.id} className={cx(CARD)}>
+          <AgentIcon agent={r.agent} size={32} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-medium text-fg">{r.agent}</span>
@@ -835,7 +844,7 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
               </Tag>
             </div>
             <div
-              className="mt-0.5 truncate font-mono text-[11px] text-muted"
+              className="mt-0.5 truncate font-mono text-xs text-muted"
               title={r.match}
             >
               {r.match}
@@ -855,16 +864,10 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
       {customs.length > 0 && (
         <>
           <div className="mt-2 text-xs font-semibold text-muted">自定义</div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {customs.map((r) => (
-              <div
-                key={r.id}
-                className={cx(
-                  "flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5 transition-opacity",
-                  !r.enabled && "opacity-55",
-                )}
-              >
-                <AgentIcon agent={r.agent.trim() || "custom"} />
+              <div key={r.id} className={cx(CARD)}>
+                <AgentIcon agent={r.agent.trim() || "custom"} size={32} />
                 <Input
                   value={r.agent}
                   onChange={(e) => update(r.id, { agent: e.target.value })}
@@ -958,13 +961,41 @@ function WatchPane({ onNotify }: { onNotify: Notify }) {
 }
 
 /** Connectors supported by the pane: one card per agent, rendered from this list.
- *  Adding an upstream is: extend inject.ts's ConnectorAgent + spec, then append here. */
+ *  Adding an upstream is: extend inject.ts's ConnectorAgent + spec, then append here.
+ *  `desc` states where the toggle writes (keep in sync with inject.ts's agentSpec);
+ *  `note` carries an agent-specific extra step (workbuddy: writing the config only
+ *  declares the server — it must also be trusted in workbuddy's UI). */
 const CONNECTORS: {
   agent: api.ConnectorAgent;
   name: string;
+  desc: string;
+  note?: string;
 }[] = [
-  { agent: "claude-code", name: "Claude Code" },
-  { agent: "joycode", name: "JoyCode" },
+  {
+    agent: "claude-code",
+    name: "Claude Code",
+    desc: "写入 ~/.claude.json 的 mcpServers 配置，新会话生效",
+  },
+  {
+    agent: "codex",
+    name: "Codex",
+    desc: "写入 ~/.codex/config.toml 的 [mcp_servers.knot] 配置段，新会话生效",
+  },
+  {
+    agent: "hermes",
+    name: "Hermes",
+    desc: "写入 ~/.hermes/config.yaml 的 mcp_servers.knot 节点，新会话生效",
+  },
+  {
+    agent: "joycode",
+    name: "JoyCode",
+    desc: "写入 ~/.joycode/joycode-mcp.json 的 mcpServers 配置，新会话生效",
+  },
+  {
+    agent: "workbuddy",
+    name: "WorkBuddy",
+    desc: "写入 ~/.workbuddy/mcp.json 的 mcpServers 配置，需在 WorkBuddy 的「连接器管理 → 自定义连接器」中信任该服务，信任后新会话生效",
+  },
 ];
 
 /** "Connectors" pane: registers Knot as an MCP server in each agent's user-level config,
@@ -1005,28 +1036,27 @@ function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="m-0 mt-1 text-xs leading-5 text-muted">
-        连接器把 Knot 注册为 Agent 的 MCP Server，Agent 在会话里即可通过
-        <code> recall_memories </code> / <code>list_projects</code>{" "}
-        工具读取当前项目由历史会话沉淀的共享记忆。开关写入的是用户级配置
-        （Claude Code：<code>~/.claude.json</code>；JoyCode：
-        <code>~/.joycode/joycode-mcp.json</code>，均为顶层{" "}
-        <code>mcpServers</code> 键，修改前自动备份为
-        <code> .knot-backup</code>），变更后需重启对应 Agent 生效。
+        将 Knot 注册为各 Agent 的 MCP Server，Agent 会话内即可通过{" "}
+        <code>recall_memories</code> / <code>list_projects</code>
+        读取当前项目的共享记忆；开关写入各 Agent
+        的用户级配置（写入前自动备份），生效方式见各卡片说明。
       </p>
 
       {CONNECTORS.map((c) => (
-        <div
-          key={c.agent}
-          className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3"
-        >
+        <div key={c.agent} className={cx(CARD)}>
           <AgentIcon agent={c.agent} size={32} />
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium text-fg">{c.name}</div>
-            <div className="mt-0.5 text-xs text-muted">
-              {bound[c.agent]
-                ? `已绑定：${c.name} 会话内可读取 Knot 共享记忆（重启 ${c.name} 后生效）`
-                : "未绑定，开启后 Knot 将注册为 " + c.name + " 的 MCP Server"}
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-fg">{c.name}</span>
+              <Tag
+                bordered={false}
+                className="m-0 shrink-0"
+                color={bound[c.agent] ? "green" : "default"}
+              >
+                {bound[c.agent] ? "已绑定" : "未绑定"}
+              </Tag>
             </div>
+            <div className="mt-0.5 text-xs text-muted">{c.desc}</div>
           </div>
           <Switch
             checked={!!bound[c.agent]}

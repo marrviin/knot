@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { entryToRegex, globRoot, watchableRoot } from '../src/watcher';
+import { entryToRegex, globRoot, slugify, watchableRoot } from '../src/watcher';
 
 describe('entryToRegex', () => {
   it('escapes regex-special characters in literal paths', () => {
@@ -61,6 +61,14 @@ describe('globRoot', () => {
 
   it('falls back to the filesystem root when the wildcard starts the path', () => {
     expect(globRoot('*.md')).toBe(path.sep);
+  });
+});
+
+describe('slugify', () => {
+  it("matches Claude Code's project-dir slug: every non-alphanumeric char becomes -", () => {
+    expect(slugify('/Users/x/github/knot')).toBe('-Users-x-github-knot');
+    expect(slugify('/Users/x/work/my.app')).toBe('-Users-x-work-my-app');
+    expect(slugify('/Users/x/my_repo v2')).toBe('-Users-x-my-repo-v2');
   });
 });
 

@@ -14,7 +14,7 @@ export default async function healthRoutes(app: FastifyInstance): Promise<void> 
       ready,
       ...(app.cfg.llm
         ? { embedSignature: embedSignatureOf(app.cfg.llm), embedModel: app.cfg.llm.embedModel }
-        : { notice: 'LLM 未配置（缺少 KNOT_LLM_API_KEY）' }),
+        : { notice: 'Embedding 未配置（缺少 KNOT_LLM_API_KEY）' }),
     };
   });
 }

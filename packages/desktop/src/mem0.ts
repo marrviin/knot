@@ -71,7 +71,7 @@ async function healthCheck(base: string, token: string | null): Promise<HealthIn
  *  the connection after a settings change. Returns null when unconfigured. */
 export async function ensureMemory(userDataDir: string): Promise<Memory | null> {
   const s = settings.load(store);
-  if (!s.enabled || !settings.isConfigured(s)) return null;
+  if (!settings.isConfigured(s)) return null;
   const key = [
     s.mode,
     s.remoteUrl,
@@ -244,7 +244,7 @@ export async function ingest(
   } catch (e) {
     console.error('[Knot mem0] 洗入失败:', e);
     log(`mem0.ingest: /ingest 失败: ${e}`);
-    return { added: 0, updated: 0, deleted: 0, notice: `LLM 提炼失败（${String(e)}），本批记忆未入库` };
+    return { added: 0, updated: 0, deleted: 0, notice: `记忆入库失败（${String(e)}），本批记忆未入库` };
   }
 }
 
@@ -267,7 +267,7 @@ export async function updateMemory(
   content: string,
 ): Promise<void> {
   const m = (await ensureMemory(userDataDir).catch(() => conn)) ?? conn;
-  if (!m) throw new Error('LLM 提炼未启用或未配置，无法更新记忆');
+  if (!m) throw new Error('记忆服务未配置，无法更新记忆');
   await api<{ ok: boolean }>(`/facts/${encodeURIComponent(memoryId)}`, {
     method: 'PUT',
     body: { content },

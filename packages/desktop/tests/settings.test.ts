@@ -23,28 +23,28 @@ describe('settings.save (API key three-state semantics)', () => {
   });
 
   it('null keeps the stored key (field untouched)', () => {
-    settings.save(s, true, 'http://x', null, 'm', 'minimax');
+    settings.save(s, 'http://x', null, 'm', 'minimax');
     expect(s.getSetting('llm_api_key')).toBe('old-key');
   });
 
   it("'' explicitly clears the key", () => {
-    settings.save(s, true, 'http://x', '', 'm', 'minimax');
+    settings.save(s, 'http://x', '', 'm', 'minimax');
     expect(s.getSetting('llm_api_key')).toBeNull();
   });
 
   it('a non-empty value replaces the key', () => {
-    settings.save(s, true, 'http://x', 'new-key', 'm', 'minimax');
+    settings.save(s, 'http://x', 'new-key', 'm', 'minimax');
     expect(s.getSetting('llm_api_key')).toBe('new-key');
   });
 
   it('empty baseUrl/model fall back to defaults', () => {
-    settings.save(s, true, '', null, '', 'minimax');
+    settings.save(s, '', null, '', 'minimax');
     expect(s.getSetting('llm_base_url')).toBe('https://api.minimax.cn/v1');
     expect(s.getSetting('llm_model')).toBe('MiniMax-M2.7');
   });
 
   it('empty baseUrl/model fall back to the openai defaults when provider is openai', () => {
-    settings.save(s, true, '', null, '', 'openai');
+    settings.save(s, '', null, '', 'openai');
     expect(s.getSetting('llm_base_url')).toBe('https://api.openai.com/v1');
     expect(s.getSetting('llm_model')).toBe('gpt-5-mini');
     expect(s.getSetting('llm_embed_model')).toBe('text-embedding-3-small');
@@ -75,7 +75,7 @@ describe('provider / embedding config', () => {
   });
 
   it('round-trips an openai provider with a custom embedding model', () => {
-    settings.save(s, true, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai', 'BAAI/bge-m3');
+    settings.save(s, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai', 'BAAI/bge-m3');
     const cfg = settings.load(s);
     expect(cfg.provider).toBe('openai');
     expect(cfg.embedModel).toBe('BAAI/bge-m3');
@@ -84,9 +84,9 @@ describe('provider / embedding config', () => {
   });
 
   it('embedSignature changes whenever the embedding model identity changes', () => {
-    settings.save(s, true, '', null, '', 'minimax', 'embo-01');
+    settings.save(s, '', null, '', 'minimax', 'embo-01');
     const minimax = settings.load(s);
-    settings.save(s, true, '', null, '', 'openai', 'text-embedding-3-small');
+    settings.save(s, '', null, '', 'openai', 'text-embedding-3-small');
     const openai = settings.load(s);
     // Same dims (1536) but a different model = a different vector space.
     expect(settings.embedSignature(minimax)).not.toBe(settings.embedSignature(openai));
@@ -102,7 +102,7 @@ describe('loadWatchRules', () => {
 
   it('returns builtin defaults when nothing is stored', () => {
     const rules = settings.loadWatchRules(s);
-    expect(rules.map((r) => r.id)).toEqual(['claude-code', 'codex', 'hermes', 'joycode']);
+    expect(rules.map((r) => r.id)).toEqual(['claude-code', 'codex', 'hermes', 'joycode', 'workbuddy']);
   });
 
   it('keeps user toggles for builtin cards but forces their match/agent to the preset', () => {
@@ -119,7 +119,7 @@ describe('loadWatchRules', () => {
 
   it('auto-restores missing builtin cards', () => {
     s.setSetting('watch_rules', JSON.stringify([]));
-    expect(settings.loadWatchRules(s)).toHaveLength(4);
+    expect(settings.loadWatchRules(s)).toHaveLength(5);
   });
 
   it('drops builtin ids that left the preset list (legacy myagent)', () => {
@@ -150,7 +150,7 @@ describe('loadWatchRules', () => {
   it('backs up corrupted stored JSON before falling back to defaults', () => {
     s.setSetting('watch_rules', '{not json');
     const rules = settings.loadWatchRules(s);
-    expect(rules).toHaveLength(4); // builtin defaults
+    expect(rules).toHaveLength(5); // builtin defaults
     expect(s.getSetting('watch_rules_corrupt_backup')).toBe('{not json');
   });
 });

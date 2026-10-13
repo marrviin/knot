@@ -232,7 +232,7 @@ function showMainWindow(win: BrowserWindow): void {
 function migrateLegacySettings(): void {
   if (store.getSetting('llm_api_key')) return;
   const legacy = store.readLegacySettings();
-  for (const key of ['llm_enabled', 'llm_base_url', 'llm_model', 'llm_api_key']) {
+  for (const key of ['llm_base_url', 'llm_model', 'llm_api_key']) {
     if (legacy[key]) store.setSetting(key, legacy[key]);
   }
 }

@@ -148,8 +148,12 @@ export function globRoot(abs: string): string {
   return cut > 0 ? prefix.slice(0, cut) : path.sep;
 }
 
-function slugify(projectPath: string): string {
-  return projectPath.split('/').join('-');
+/** Claude Code's project-dir slug encodes every non-alphanumeric char as '-'
+ *  (/a/b/my.app → -a-b-my-app), so plain '/'-splitting would miss paths with
+ *  dots/underscores in them. */
+// (exported for tests)
+export function slugify(projectPath: string): string {
+  return projectPath.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 function expandHome(p: string): string {
@@ -473,7 +477,7 @@ async function doRunImport(
       current: 0,
       total: 0,
       report: { added: 0, updated: 0, deleted: 0 },
-      notice: 'LLM 提炼未启用或未配置，已有记忆未导入',
+      notice: '记忆服务未配置，已有记忆未导入',
     });
     return;
   }
@@ -524,14 +528,14 @@ async function doRunImport(
       let done = 0;
       const total: mem0.IngestReport = { added: 0, updated: 0, deleted: 0 };
       for (const file of [...files].sort()) {
-        log(`importExisting: 开始提炼 ${file}（${done + 1}/${files.size}）`);
+        log(`importExisting: 开始导入 ${file}（${done + 1}/${files.size}）`);
         // One bad file (upstream down, init failure) must not abort the whole
         // import mid-way — record the notice and keep going; the marker stays
         // unset so a later import retries the failed round.
         const report = await ingestFileOnce(project, file, rule, onIngestedCb).catch(
           (e): mem0.IngestReport => {
-            log(`importExisting: 单文件提炼失败 ${file}: ${e}`);
-            return { added: 0, updated: 0, deleted: 0, notice: 'LLM 提炼失败' };
+            log(`importExisting: 单文件导入失败 ${file}: ${e}`);
+            return { added: 0, updated: 0, deleted: 0, notice: '记忆入库失败' };
           },
         );
         log(`importExisting: 完成 ${path.basename(file)} added=${report.added} updated=${report.updated} deleted=${report.deleted}${report.notice ? ` notice=${report.notice}` : ''}`);

@@ -131,9 +131,9 @@ function Shell() {
 
   // Bootstrap the renderer-direct HTTP endpoint before the first display load:
   // the main process spawns (or reconnects to) the memory service and hands
-  // back its loopback base + per-launch token. A disabled service shows the
-  // notice once instead of per-request errors. Re-run when the settings modal
-  // closes — enabling/reconfiguring the service takes effect immediately, and
+  // back its loopback base + per-launch token. An unconfigured service shows
+  // the notice once instead of per-request errors. Re-run when the settings
+  // modal closes — reconfiguring the service takes effect immediately, and
   // ensureMemory re-validates the connection on every call.
   const reconnectMemory = useCallback(
     (opts: { quiet?: boolean } = {}) => {
@@ -141,7 +141,7 @@ function Shell() {
         .initMemoryEndpoint()
         .then((ok) => {
           if (!ok && !opts.quiet)
-            notify("记忆服务未启用，请在设置中配置并启用", "error");
+            notify("记忆服务未配置，请在设置中配置模型服务", "error");
           reloadProjects();
         })
         .catch((e) => {

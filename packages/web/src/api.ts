@@ -185,9 +185,10 @@ export async function deleteFact(id: string, projectId: string): Promise<void> {
 }
 
 // ---------- MCP config injection ----------
-// Per-agent (claude-code / joycode): writes each agent's user-level mcpServers config.
+// Per-agent (claude-code / codex / hermes / joycode / workbuddy): writes each
+// agent's user-level mcpServers config.
 
-export type ConnectorAgent = "claude-code" | "joycode";
+export type ConnectorAgent = "claude-code" | "codex" | "hermes" | "joycode" | "workbuddy";
 
 export const injectMcp = (agent: ConnectorAgent) =>
   window.knot.invoke<string>("inject_mcp", agent);
@@ -198,10 +199,9 @@ export const removeMcp = (agent: ConnectorAgent) =>
 export const mcpStatus = (agent: ConnectorAgent) =>
   window.knot.invoke<boolean>("mcp_status", agent);
 
-// ---------- Settings (core extraction-layer LLM config) ----------
+// ---------- Settings (memory service connection) ----------
 
 export interface LlmSettings {
-  enabled: boolean;
   provider: "minimax" | "openai";
   baseUrl: string;
   model: string;
@@ -220,7 +220,6 @@ export const getSettings = () =>
 /** Pass null for apiKey to keep the existing value; '' explicitly clears it.
  *  Same contract for remoteToken (only meaningful in remote mode). */
 export const saveSettings = (
-  enabled: boolean,
   baseUrl: string,
   apiKey: string | null,
   model: string,
@@ -232,7 +231,6 @@ export const saveSettings = (
 ) =>
   window.knot.invoke(
     "save_settings",
-    enabled,
     baseUrl,
     apiKey,
     model,

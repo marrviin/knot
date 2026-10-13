@@ -94,8 +94,9 @@ export function registerIpc(ctx: IpcContext): void {
   // local mirror stays aligned for MCP keyword search.
 
   // ---------- MCP config injection ----------
-  // One set of channels per target agent (claude-code / joycode): the agent id is
-  // validated by inject.asAgent, so an unknown id throws before touching any file.
+  // One set of channels per target agent (claude-code / codex / hermes / joycode /
+  // workbuddy): the agent id is validated by inject.asAgent, so an unknown id
+  // throws before touching any file.
 
   ipcMain.handle("inject_mcp", (_e, agent: unknown) =>
     ok(() => inject.inject(inject.asAgent(agent))),
@@ -117,7 +118,6 @@ export function registerIpc(ctx: IpcContext): void {
     "save_settings",
     (
       _e,
-      enabled: boolean,
       baseUrl: string,
       apiKey: string | null,
       model: string,
@@ -132,7 +132,6 @@ export function registerIpc(ctx: IpcContext): void {
         const before = settings.embedSignature(beforeLoad);
         settings.save(
           store,
-          enabled,
           baseUrl,
           apiKey,
           model,
@@ -142,19 +141,17 @@ export function registerIpc(ctx: IpcContext): void {
           remoteUrl,
           remoteToken,
         );
+        // Any settings save takes effect immediately: rebuild watchers and import
+        // pending existing content — no app restart needed. Fire-and-forget: the
+        // import is minutes of embedding calls; progress events drive the UI.
+        watcher.rescan();
+        void watcher
+          .importExisting((projectId, report) => {
+            ctx.onFactsChanged({ path: projectId, ...report });
+          })
+          .catch((e) => log(`save_settings 触发的存量导入失败: ${e}`));
         const afterLoad = settings.load(store);
         const after = settings.embedSignature(afterLoad);
-        // Enabling (or reconfiguring) takes effect immediately: rebuild watchers and
-        // import pending existing content — no app restart needed. Fire-and-forget:
-        // the import is minutes of LLM calls; progress events drive the UI.
-        if (enabled) {
-          watcher.rescan();
-          void watcher
-            .importExisting((projectId, report) => {
-              ctx.onFactsChanged({ path: projectId, ...report });
-            })
-            .catch((e) => log(`save_settings 触发的存量导入失败: ${e}`));
-        }
         // A changed embedding model invalidates every stored vector: old memories
         // become unsearchable in the semantic path until the store is rebuilt.
         // Remote mode skips this — vectors live on the service, which warns on

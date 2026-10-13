@@ -256,7 +256,7 @@ export async function ingest(
   preferExisting: Set<string> = new Set(),
 ): Promise<{ report: IngestReport; facts: FactItem[] }> {
   const m = await ensureMemory(cfg, dataDir);
-  if (!m) return { report: { added: 0, updated: 0, deleted: 0, notice: '记忆库未启用或未配置' }, facts: [] };
+  if (!m) return { report: { added: 0, updated: 0, deleted: 0, notice: '记忆库未配置' }, facts: [] };
 
   // Any write path registers the project lazily (bare path segments make a
   // reasonable display name; explicit names come through ensureProject callers).
@@ -324,7 +324,7 @@ export function addManualMemory(
  *  the client only updates its mirror after this succeeds. */
 export async function updateFact(cfg: LlmConfig | null, dataDir: string, memoryId: string, content: string): Promise<void> {
   const m = await ensureMemory(cfg, dataDir);
-  if (!m) throw new Error('LLM 提炼未启用或未配置，无法更新记忆');
+  if (!m) throw new Error('记忆服务未配置，无法更新记忆');
   await withTimeout(m.update(memoryId, { text: content }), ADD_TIMEOUT_MS, '更新记忆');
   store.stampUpdated(dataDir, [memoryId], Date.now());
 }

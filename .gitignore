@@ -15,3 +15,6 @@ src-tauri/gen/schemas/
 CLAUDE.md
 
 *.log
+
+# swagger-ui 静态资源构建产物（server build 从 node_modules 拷贝）
+packages/server/static/

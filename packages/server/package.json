@@ -7,7 +7,7 @@
   "main": "dist-server/index.cjs",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "rm -rf dist-server && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist-server/index.cjs --external:better-sqlite3 --external:mem0ai",
+    "build": "rm -rf dist-server && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist-server/index.cjs --external:better-sqlite3 --external:mem0ai && cp -RL node_modules/@fastify/swagger-ui/static dist-server/static && rm -rf static && cp -RL node_modules/@fastify/swagger-ui/static static",
     "emit:openapi": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {

@@ -23,7 +23,6 @@ export type { LlmProvider };
 export type MemoryMode = 'local' | 'remote';
 
 export interface LlmSettings {
-  enabled: boolean;
   provider: LlmProvider;
   baseUrl: string;
   model: string;
@@ -38,7 +37,6 @@ export interface LlmSettings {
 }
 
 export interface LlmSettingsView {
-  enabled: boolean;
   provider: LlmProvider;
   baseUrl: string;
   model: string;
@@ -66,7 +64,6 @@ export function load(s: typeof store): LlmSettings {
         : inferProvider(storedBase);
   const d = PROVIDER_DEFAULTS[provider];
   return {
-    enabled: s.getSetting('llm_enabled') === '1',
     provider,
     baseUrl: storedBase || d.baseUrl,
     model: s.getSetting('llm_model') || d.model,
@@ -78,8 +75,8 @@ export function load(s: typeof store): LlmSettings {
   };
 }
 
-/** Per-mode: local needs the full LLM block (extraction runs on the spawned
- *  child); remote only needs a service address — keys are configured server-side. */
+/** Per-mode: local needs the full model-service block (embedding calls run on the
+ *  spawned child); remote only needs a service address — keys are configured server-side. */
 export function isConfigured(s: LlmSettings): boolean {
   if (s.mode === 'remote') return !!s.remoteUrl.trim();
   return !!(s.baseUrl && s.apiKey && s.model && s.embedModel);
@@ -93,7 +90,6 @@ export function embedSignature(s: LlmSettings): string {
 
 export function view(s: LlmSettings): LlmSettingsView {
   return {
-    enabled: s.enabled,
     provider: s.provider,
     baseUrl: s.baseUrl,
     model: s.model,
@@ -107,7 +103,6 @@ export function view(s: LlmSettings): LlmSettingsView {
 
 export function save(
   s: typeof store,
-  enabled: boolean,
   baseUrl: string,
   apiKey: string | null,
   model: string,
@@ -118,7 +113,6 @@ export function save(
   remoteToken?: string | null,
 ): void {
   const d = PROVIDER_DEFAULTS[provider];
-  s.setSetting('llm_enabled', enabled ? '1' : '0');
   s.setSetting('llm_provider', provider);
   s.setSetting('llm_base_url', baseUrl.trim() || d.baseUrl);
   s.setSetting('llm_model', model.trim() || d.model);
@@ -179,9 +173,14 @@ export function indexFilesOf(rule: WatchRule): Set<string> {
  *  under ~/.claude/projects/<slug>/memory/; hermes has no per-project memory — its
  *  built-in memory bank is profile-global (~/.hermes/memories/MEMORY.md + USER.md),
  *  so its entry is absolute and attributes to the global-memory virtual project.
- *  codex has no prevailing directory convention yet, so it's preset as an in-project
- *  dot directory and disabled by default; users can add custom cards when the
- *  presets don't fit. */
+ *  codex has no per-project memory dir: its instructions are per-project AGENTS.md,
+ *  and its (default-off) local memories live profile-global under ~/.codex/memories/
+ *  — the memory entry is absolute and attributes to the global-memory virtual
+ *  project; disabled by default since the feature is off upstream. workbuddy keeps a
+ *  profile-global per-user memory file (~/.workbuddy/memory/<uid>_memory.md — the
+ *  whole file is the memory body), so its entry is absolute and attributes to the
+ *  global-memory virtual project like hermes; the `*_memory.md` glob keeps sibling
+ *  `.bak` backups out. */
 export const DEFAULT_WATCH_RULES: WatchRule[] = [
   {
     id: 'claude-code',
@@ -190,7 +189,14 @@ export const DEFAULT_WATCH_RULES: WatchRule[] = [
     enabled: true,
     builtin: true,
   },
-  { id: 'codex', agent: 'codex', match: '.codex/memory/*.md', enabled: false, builtin: true },
+  {
+    id: 'codex',
+    agent: 'codex',
+    // per-project AGENTS.md + the profile-global (default-off) memory store
+    match: 'AGENTS.md, ~/.codex/memories/**',
+    enabled: false,
+    builtin: true,
+  },
   {
     id: 'hermes',
     agent: 'hermes',
@@ -200,6 +206,13 @@ export const DEFAULT_WATCH_RULES: WatchRule[] = [
     builtin: true,
   },
   { id: 'joycode', agent: 'joycode', match: '.joycode/memory/*.md', enabled: true, builtin: true },
+  {
+    id: 'workbuddy',
+    agent: 'workbuddy',
+    match: '~/.workbuddy/memory/*_memory.md',
+    enabled: true,
+    builtin: true,
+  },
 ];
 
 const WATCH_KEY = 'watch_rules';
