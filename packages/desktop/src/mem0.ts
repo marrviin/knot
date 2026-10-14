@@ -148,6 +148,17 @@ export function isReady(): boolean {
   return conn !== null;
 }
 
+/** Force-rebuild the local connection: kill the child and drop the cached
+ *  endpoint. The chat-LLM block is baked into the child's env at spawn (and its
+ *  journal scheduler reads cfg once at boot), so a settings save must restart
+ *  the child to take effect. The next ensureMemory() spawns a fresh child with
+ *  the new settings — call it right after to kick that spawn eagerly. */
+export function restartLocalServer(): void {
+  conn = null;
+  currentKey = null;
+  stopServer();
+}
+
 interface ApiInit {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;

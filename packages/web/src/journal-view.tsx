@@ -85,8 +85,9 @@ function RedCircleBadge({ text }: { text: string }) {
   );
 }
 
-/** Date header + rule shared by real and still-being-written cards */
-function DateHeader({ date }: { date: string }) {
+/** Date header + rule shared by real and still-being-written cards (also used
+ *  by the standalone journal-book window's pages) */
+export function DateHeader({ date }: { date: string }) {
   const rel = dayRelative(date);
   return (
     <>
@@ -109,9 +110,20 @@ function DateHeader({ date }: { date: string }) {
 }
 
 /** One owed day: header now, body is the generation's estimated progress */
-function PendingCard({ date, owing, startedAt }: { date: string; owing: string[]; startedAt: number }) {
+function PendingCard({
+  date,
+  owing,
+  startedAt,
+  className = "px-10 py-6",
+}: {
+  date: string;
+  owing: string[];
+  startedAt: number;
+  /** Card layout classes (padding/spacing) — callers match the entry cards */
+  className?: string;
+}) {
   return (
-    <section className="jnl-paper px-10 py-6">
+    <section className={`jnl-paper ${className}`}>
       <DateHeader date={date} />
       <div className="mt-5">
         <Progress percent={pendingPercent(date, owing, startedAt)} status="active" showInfo={false} size="small" />
@@ -125,6 +137,7 @@ export function JournalView({
   project,
   onNotify,
   regenNonce = 0,
+  layout = "list",
 }: {
   project: { path: string };
   onNotify: (msg: string, type?: "info" | "error") => void;
@@ -132,6 +145,9 @@ export function JournalView({
    *  synchronously before returning, so the bump re-runs this planner — the
    *  owed cards take over from the freshly deleted dates. */
   regenNonce?: number;
+  /** Reading layout: "list" = single-column day stack; "grid" = equal-width
+   *  responsive grid (1/2/3 columns by breakpoint), each card its own height. */
+  layout?: "list" | "grid";
 }) {
   const [entries, setEntries] = useState<JournalEntry[] | null>(null);
   /** Days this project still owes a journal (ascending from the server),
@@ -246,17 +262,34 @@ export function JournalView({
     ...owing.map((d) => ({ date: d })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
+  // Grid narrows each card, so the paper's inner padding tightens a notch
+  // (list mode keeps the roomier single-column padding).
+  const cardCls = layout === "grid" ? "px-7 py-6" : "px-10 py-6";
+
   return (
-    <div className="mx-auto max-w-3xl px-8 pb-10 pt-4">
-      <div className="flex flex-col gap-6">
+    <div className={`mx-auto px-8 pb-10 pt-4 ${layout === "grid" ? "max-w-6xl" : "max-w-3xl"}`}>
+      <div
+        className={
+          layout === "grid"
+            ? // Equal-width cells; items-start keeps each paper at its own
+              // height instead of stretching to the row's tallest.
+              "grid grid-cols-1 items-start gap-6 md:grid-cols-2 2xl:grid-cols-3"
+            : "flex flex-col gap-6"
+        }
+      >
         {rows.map(({ date, entry }) =>
           entry ? (
-            <section key={date} className="jnl-paper px-10 py-6">
+            <section
+              key={date}
+              className={`jnl-paper ${cardCls} cursor-pointer transition-shadow hover:shadow-lg`}
+              title="打开日记本"
+              onClick={() => api.openJournalWindow(project.path, date)}
+            >
               <DateHeader date={date} />
               <JournalMd text={entry.content} />
             </section>
           ) : (
-            <PendingCard key={date} date={date} owing={owing} startedAt={startedAt} />
+            <PendingCard key={date} date={date} owing={owing} startedAt={startedAt} className={cardCls} />
           ),
         )}
       </div>

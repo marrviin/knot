@@ -152,4 +152,183 @@
   .jnl-block {
     background: var(--jnl-block);
   }
+
+  /* ── Journal book window (jnb-*): the standalone diary-book window: a
+     leather-bound book with a two-page spread floating over a transparent
+     window (real 3D page flips — each leaf rotates around the spine;
+     front/back faces via backface-visibility). See journal-window.ts and
+     journal-book.tsx. The desk used to be painted here; now the window is
+     transparent and only the book (with its own drop shadow) is visible. */
+  .jnb-desk {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 2400px;
+  }
+  .jnb-note {
+    margin: 0;
+    max-width: 60vw;
+    text-align: center;
+    color: rgba(236, 223, 196, 0.9);
+    /* The note floats over the user's desktop (transparent window) — a soft
+     * dark glow keeps it legible on light wallpaper. */
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    font-family: var(--font-hand);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .jnb-book {
+    /* Fixed page size, matched to the BrowserWindow (1000×740, not resizable).
+       No filter/opacity here — grouping properties would flatten the 3D
+       context and kill the perspective on the turning leaves. */
+    --jnb-pw: 420px;
+    --jnb-ph: 620px;
+    position: relative;
+    width: calc(var(--jnb-pw) * 2);
+    height: var(--jnb-ph);
+    transform-style: preserve-3d;
+    /* The book is its own drag handle (JS drag — see journal-book.tsx) */
+    cursor: grab;
+  }
+  /* Mid-drag: grabbing cursor everywhere, even over the pages' pointer cursors */
+  body.jnb-dragging,
+  body.jnb-dragging * {
+    cursor: grabbing !important;
+  }
+  /* Static paper underlays so mid-turn gaps never flash the desk through.
+     The left base carries entry 0 permanently (see BookStage); both halves
+     click-to-flip like the leaves above them. The book's drop shadow lives
+     here (box-shadow, not filter — see .jnb-book). */
+  .jnb-base {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--jnb-pw);
+    background: linear-gradient(180deg, #f4eedd 0%, #efe7d2 100%);
+    box-shadow: 0 30px 50px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+  .jnb-base-l {
+    left: 0;
+    border-radius: 10px 0 0 10px;
+  }
+  .jnb-base-r {
+    right: 0;
+    border-radius: 0 10px 10px 0;
+  }
+  .jnb-leaf {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: var(--jnb-pw);
+    height: 100%;
+    transform-origin: left center;
+    transform-style: preserve-3d;
+  }
+  /* The turn itself: rotate around the spine. The leaf's height above the
+     book (translateZ) interpolates linearly from the right stack to the left
+     stack — no mid-flight bulge, so the spine edge never changes height (a
+     uniform lift would push it toward the viewer and make it look taller).
+     The leaf still stays above both stacks the whole way: on the right half
+     it's above its own stack (it was the topmost sheet), and on the left half
+     its target z is one step above the flipped stack. .turn-back plays the
+     same keyframes in reverse — the left page lifts and swings back to the
+     right. --z-from/--z-to are set per leaf in journal-book.tsx. */
+  @keyframes jnb-turn {
+    0% {
+      transform: translateZ(var(--z-from)) rotateY(0deg);
+    }
+    100% {
+      transform: translateZ(var(--z-to)) rotateY(-180deg);
+    }
+  }
+  .jnb-leaf.turn-fwd {
+    animation: jnb-turn 0.52s cubic-bezier(0.3, 0.06, 0.22, 1) both;
+  }
+  .jnb-leaf.turn-back {
+    animation: jnb-turn 0.52s cubic-bezier(0.3, 0.06, 0.22, 1) reverse both;
+  }
+  /* Paper flex: the leaf hinges at the spine, but the free edge trails a few
+     degrees behind the rotation mid-flight (the bend wrapper lags the leaf,
+     flush again at both ends) — the turn reads as bendy paper, not a rigid
+     lid. The wrapper is inert at rest, so static geometry is untouched. */
+  .jnb-bend {
+    position: absolute;
+    inset: 0;
+    transform-origin: left center;
+    transform-style: preserve-3d;
+  }
+  @keyframes jnb-bend {
+    0%,
+    100% {
+      transform: rotateY(0deg);
+    }
+    50% {
+      transform: rotateY(14deg);
+    }
+  }
+  .jnb-leaf.turn-fwd .jnb-bend,
+  .jnb-leaf.turn-back .jnb-bend {
+    animation: jnb-bend 0.52s cubic-bezier(0.3, 0.06, 0.22, 1) both;
+  }
+  .jnb-leaf.turn-back .jnb-bend {
+    animation-direction: reverse;
+  }
+  .jnb-face {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    color: var(--jnl-ink);
+    font-family: var(--font-hand);
+    background: linear-gradient(180deg, var(--jnl-paper) 0%, var(--jnl-paper) 86%, var(--jnl-paper-edge) 100%);
+    cursor: pointer;
+  }
+  /* Rounded outer corners only — the sheet's spine edge stays square (the
+     corner rounded on the front ends up outer-rounded on the back after the
+     flip, so per-face radius is physically consistent) */
+  .jnb-face.jnb-front {
+    border-radius: 0 10px 10px 0;
+  }
+  .jnb-face.jnb-back {
+    transform: rotateY(180deg);
+    border-radius: 10px 0 0 10px;
+  }
+  /* Spine shading per face (front sits right of the spine, back left of it) */
+  .jnb-face::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .jnb-face.jnb-front::after {
+    background: linear-gradient(to right, rgba(96, 74, 38, 0.2), rgba(96, 74, 38, 0.05) 4%, transparent 9%);
+  }
+  .jnb-face.jnb-back::after {
+    background: linear-gradient(to left, rgba(96, 74, 38, 0.2), rgba(96, 74, 38, 0.05) 4%, transparent 9%);
+  }
+  .jnb-page-inner {
+    position: absolute;
+    inset: 0;
+  }
+  .jnb-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    /* Compact default; PageBody's fit loop shrinks further (down to 0.5)
+       until the whole day fits the sheet without scrolling */
+    zoom: 0.9;
+  }
+  .jnb-blank {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(96, 74, 38, 0.3);
+    font-size: 22px;
+  }
 }

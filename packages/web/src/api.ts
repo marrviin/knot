@@ -326,6 +326,29 @@ export const closeSettingsWindow = () =>
 export const onSettingsClosed = (cb: () => void) =>
   window.journal.listen("journal://settings-closed", cb);
 
+// ---------- Standalone journal-book window ----------
+
+/** Open the diary-book window at one day's entry (desktop only — the browser
+ *  build has no window.journal and silently skips). */
+export function openJournalWindow(project: string, date: string): void {
+  if (!hasDesktopBridge()) return;
+  void window.journal.invoke("open_journal", { project, date }).catch(() => {});
+}
+
+/** Re-open event from the main process: the book window is already up and a
+ *  card click asked it to turn to another day (or another project's diary). */
+export const onBookOpen = (cb: (p: { project: string; date: string }) => void) => {
+  if (!hasDesktopBridge()) return () => {};
+  return window.journal.listen("journal://book-open", cb);
+};
+
+/** Move the sender window by a screen-space delta — the journal-book window's
+ *  drag-to-move stream (only the book ever invokes this). Fire-and-forget. */
+export function moveWindow(dx: number, dy: number): void {
+  if (!hasDesktopBridge()) return;
+  void window.journal.invoke("move_window", dx, dy).catch(() => {});
+}
+
 // ---------- Last opened project ----------
 
 export const getLastProject = () =>

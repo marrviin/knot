@@ -11,6 +11,7 @@ import * as mem0 from "./mem0";
 import * as watcher from "./watcher";
 import * as mcpServer from "./mcp-server";
 import { createOrShowSettingsWindow, closeSettingsWindow } from "./settings-window";
+import { createOrShowJournalWindow } from "./journal-window";
 import { log } from "./log";
 
 export interface IpcContext {
@@ -57,6 +58,27 @@ export function registerIpc(ctx: IpcContext): void {
   });
 
   ipcMain.handle("close_settings", () => ok(() => closeSettingsWindow()));
+
+  // ---------- Standalone journal-book window ----------
+
+  // Open (or retarget) the diary-book window at one day's entry. The payload is
+  // an object (not positional args) so future book params stay additive.
+  ipcMain.handle("open_journal", (_e, payload: { project: string; date: string }) =>
+    ok(() => createOrShowJournalWindow(payload.project, payload.date)),
+  );
+
+  // Drag-to-move the book window: the renderer streams incremental screen
+  // deltas while the button is down (deltas, not target coordinates — async IPC
+  // lag then can't accumulate into a drifting window). Applied to the sender
+  // window, so it's only meaningful from the journal-book window.
+  ipcMain.handle("move_window", (e, dx: number, dy: number) =>
+    ok(() => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      if (!win || typeof dx !== "number" || typeof dy !== "number") return;
+      const [x, y] = win.getPosition();
+      win.setPosition(x + dx, y + dy);
+    }),
+  );
 
   // ---------- Projects ----------
 
@@ -123,6 +145,25 @@ export function registerIpc(ctx: IpcContext): void {
 
   // ---------- Settings ----------
 
+  // The chat-LLM block is baked into the server child's env at spawn (its
+  // journal scheduler and chat extraction read that cfg once at boot), so a
+  // changed block needs a fresh child — new mirror settings alone would leave
+  // the running child on the old (possibly keyless) config forever.
+  const restartServerOnLlmChange = (prev: settings.LlmSettings): void => {
+    const next = settings.load(store);
+    if (
+      prev.mode !== "local" ||
+      next.mode !== "local" ||
+      (prev.baseUrl === next.baseUrl && prev.apiKey === next.apiKey && prev.model === next.model)
+    ) {
+      return;
+    }
+    mem0.restartLocalServer();
+    // Spawn immediately so the journal scheduler boots with the new key instead
+    // of waiting for the next renderer request to trigger the lazy respawn.
+    void mem0.ensureMemory(ctx.userDataDir).catch((e) => log(`记忆服务重启失败: ${e}`));
+  };
+
   ipcMain.handle("get_settings", () =>
     ok(() => settings.view(settings.load(store))),
   );
@@ -139,7 +180,9 @@ export function registerIpc(ctx: IpcContext): void {
       remoteToken?: string | null,
     ) =>
       ok(() => {
+        const prev = settings.load(store);
         settings.save(store, baseUrl, apiKey, model, mode, remoteUrl, remoteToken);
+        restartServerOnLlmChange(prev);
         // Any settings save takes effect immediately: rebuild watchers and import
         // pending existing content — no app restart needed. Fire-and-forget: the
         // import is minutes of embedding calls; progress events drive the UI.
@@ -163,7 +206,9 @@ export function registerIpc(ctx: IpcContext): void {
     apiKey: string | null,
     entry: { baseUrl: string; model: string },
   ): void => {
+    const prev = settings.load(store);
     settings.save(store, entry.baseUrl, apiKey, entry.model);
+    restartServerOnLlmChange(prev);
     // Same take-effect-immediately contract as save_settings (no app restart).
     watcher.rescan();
     void watcher

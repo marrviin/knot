@@ -14,6 +14,7 @@ import * as mem0 from './mem0';
 import * as watcher from './watcher';
 import { initLog, log } from './log';
 import { registerIpc } from './ipc';
+import { closeJournalWindow } from './journal-window';
 import { runMcpServer, startMcpHttpServer, setMcpContext, mcpPort, McpHttpHandle } from './mcp-server';
 
 if (process.argv.includes('--mcp-server')) {
@@ -86,6 +87,9 @@ async function startGui(): Promise<void> {
       sandbox: true,
     },
   });
+
+  // Clicking back into the main window dismisses the floating journal book
+  win.on('focus', () => closeJournalWindow());
 
   // Traffic lights/close button → hide to tray instead of quitting; Cmd+Q or tray "Quit" actually quits.
   // Real quit paths (Cmd+Q / tray / app.quit) all run through before-quit — the only

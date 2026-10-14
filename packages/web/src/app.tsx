@@ -29,6 +29,7 @@ import {
 } from "antd";
 import type { MenuProps } from "antd";
 import {
+  AppstoreOutlined,
   BookOutlined,
   DeleteOutlined,
   EllipsisOutlined,
@@ -479,6 +480,18 @@ function FactPanel({
   /** Bumped once regenerate's server-side deletion has landed — JournalView's
    *  owed-planner re-runs and the deleted days turn into progress cards. */
   const [journalRegenNonce, setJournalRegenNonce] = useState(0);
+  /** Journal reader layout: day-card stack (list) or equal-width grid.
+   *  Persisted — the reading layout is a preference, not a session choice. */
+  const [journalLayout, setJournalLayout] = useState<"list" | "grid">(() =>
+    localStorage.getItem("journal.layout") === "grid" ? "grid" : "list",
+  );
+  const toggleJournalLayout = useCallback(() => {
+    setJournalLayout((cur) => {
+      const next = cur === "list" ? "grid" : "list";
+      localStorage.setItem("journal.layout", next);
+      return next;
+    });
+  }, []);
 
   // Debug regeneration (临时调试用): delete the project's past-date journals
   // server-side, then regenerate them from the same memories. Deletion lands
@@ -683,8 +696,22 @@ function FactPanel({
                 })}
               </div>
             )}
-            {/* Journal mode: debug regeneration entry (临时调试用) sits left
-                of the reader toggle */}
+            {/* Journal mode: reader layout toggle (list stack ↔ grid), then
+                the debug regeneration entry, both left of the reader toggle */}
+            {journalMode && (
+              <button
+                type="button"
+                title={journalLayout === "list" ? "切换为栅格布局" : "切换为列表布局"}
+                onClick={toggleJournalLayout}
+                className={`flex cursor-pointer items-center rounded-lg border-0 p-1.5 transition-colors ${
+                  journalLayout === "grid"
+                    ? "bg-[color-mix(in_srgb,var(--ant-color-primary)_12%,transparent)] text-accent"
+                    : "bg-transparent text-muted opacity-70 hover:opacity-100"
+                }`}
+              >
+                <AppstoreOutlined className="text-[18px]" />
+              </button>
+            )}
             {journalMode && (
               <button
                 type="button"
@@ -725,7 +752,12 @@ function FactPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {journalMode ? (
-          <JournalView project={project} onNotify={onNotify} regenNonce={journalRegenNonce} />
+          <JournalView
+            project={project}
+            onNotify={onNotify}
+            regenNonce={journalRegenNonce}
+            layout={journalLayout}
+          />
         ) : hits ? (
           (shownHits?.length ?? 0) === 0 ? (
             // Empty state: header line + Empty centered together in the container

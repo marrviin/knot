@@ -52,6 +52,11 @@ export default async function journalRoutes(app: FastifyInstance): Promise<void>
       schema: { body: JournalScopeBody, response: { 200: OkResponse }, operationId: 'generateJournals' },
     },
     async (req) => {
+      if (!app.cfg.llm.apiKey) {
+        // Surface the no-key state instead of a silent ok:true (the writer's
+        // own guard would otherwise drop the request with no feedback).
+        throw app.httpErrors.badRequest('聊天 LLM 未配置（无 API Key），无法生成日记');
+      }
       void generateMissingJournals(app.cfg.llm, app.cfg.dataDir, req.body.projectId?.trim() || undefined);
       return { ok: true };
     },
@@ -67,6 +72,9 @@ export default async function journalRoutes(app: FastifyInstance): Promise<void>
       schema: { body: JournalProjectBody, response: { 200: OkResponse }, operationId: 'regenerateJournals' },
     },
     async (req) => {
+      if (!app.cfg.llm.apiKey) {
+        throw app.httpErrors.badRequest('聊天 LLM 未配置（无 API Key），无法生成日记');
+      }
       void regenerateJournals(app.cfg.llm, app.cfg.dataDir, req.body.projectId.trim());
       return { ok: true };
     },

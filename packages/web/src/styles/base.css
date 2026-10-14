@@ -10,6 +10,12 @@
   background: var(--color-panel);
 }
 
+/* The journal-book window is a transparent BrowserWindow — the panel fill must
+ * give way so only the book floats over the user's desktop. */
+html[data-window='journal'] {
+  background: transparent;
+}
+
 html,
 body,
 #root {
