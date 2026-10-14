@@ -13,7 +13,7 @@
 import * as store from './store';
 import * as settings from './settings';
 import { log } from './log';
-import { ensureServerProcess, stopServer } from './server-process';
+import { ensureServerProcess, isServerRunning, stopServer } from './server-process';
 import type { FactItem, IngestReport, SemanticHit } from '@knot/shared';
 
 // Shared contracts — re-exported so ipc.ts / watcher.ts / mcp-server.ts keep
@@ -80,9 +80,16 @@ export async function ensureMemory(userDataDir: string): Promise<Memory | null> 
     s.baseUrl,
     s.apiKey,
     s.model,
-    s.embedModel,
   ].join('|');
-  if (conn && currentKey === key) return conn;
+  if (conn && currentKey === key) {
+    // A cached local endpoint can go stale behind our back: the child service
+    // dies mid-session (crash, external signal) while conn keeps pointing at
+    // its dead port — every call would then fail until the app restarts.
+    // Re-verify before trusting the cache; ensureServerProcess respawns lazily.
+    if (conn.kind !== 'local' || isServerRunning()) return conn;
+    conn = null;
+    currentKey = null;
+  }
   if (ensurePromise) return ensurePromise;
 
   ensurePromise = (async () => {
@@ -99,7 +106,6 @@ export async function ensureMemory(userDataDir: string): Promise<Memory | null> 
           baseUrl: s.baseUrl,
           apiKey: s.apiKey,
           model: s.model,
-          embedModel: s.embedModel,
         },
       });
       next = { base: `http://127.0.0.1:${proc.port}`, token: proc.token, kind: 'local', embedSignature: null };

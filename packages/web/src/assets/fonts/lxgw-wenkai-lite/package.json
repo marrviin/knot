@@ -1,0 +1,8 @@
+{
+  "fetched": "lxgw-wenkai-lite-webfont",
+  "version": "1.7.0",
+  "css": [
+    "lxgwwenkailite-regular.css",
+    "lxgwwenkailite-bold.css"
+  ]
+}

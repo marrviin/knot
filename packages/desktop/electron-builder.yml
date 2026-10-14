@@ -20,9 +20,15 @@ extraResources:
   - from: ../server/dist-server
     to: dist-server
 
-# better-sqlite3 含 .node 原生模块，必须解包到 asar 外才能被 require
+# 原生/大二进制依赖必须解包到 asar 外才能被 require：
+# better-sqlite3 / onnxruntime-node 含 .node 原生模块；transformers.js 运行时
+# 按需加载 onnxruntime-node（本地 embedding，见 server/src/local-embedder.ts）
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/onnxruntime-node/**"
+  - "**/node_modules/@huggingface/transformers/**"
+  - "**/node_modules/onnxruntime-common/**"
+  - "**/node_modules/sharp/**"
 
 # CI 上没有签名证书，identity: null 走 ad-hoc 签名（本机可正常运行，
 # 分发给他人首次打开需右键 -> 打开；正式分发再接 Apple Developer ID 公证）

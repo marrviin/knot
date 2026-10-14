@@ -8,13 +8,14 @@ import { HealthResponse } from '../schemas';
  *  before marking the child ready. */
 export default async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', { schema: { response: { 200: HealthResponse }, operationId: 'getHealth' } }, async () => {
-    const ready = app.cfg.llm !== null;
+    // Embeddings always run locally, so the service is always ready; the chat
+    // key inside only enables journal backfill.
+    const llm = app.cfg.llm;
     return {
       ok: true,
-      ready,
-      ...(app.cfg.llm
-        ? { embedSignature: embedSignatureOf(app.cfg.llm), embedModel: app.cfg.llm.embedModel }
-        : { notice: 'Embedding 未配置（缺少 KNOT_LLM_API_KEY）' }),
+      ready: true,
+      embedSignature: embedSignatureOf(llm),
+      embedModel: llm.embedModel,
     };
   });
 }

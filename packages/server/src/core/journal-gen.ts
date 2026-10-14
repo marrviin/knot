@@ -36,6 +36,13 @@ const SYSTEM_PROMPT = `你是「结绳」的实验日志代笔。根据某个项
 - 有人味：允许不确定（"好像""没想明白为什么就对了"）、允许口语和半句话；不写"首先/其次/总之"这类总结腔；结尾不要套"今天的教训"之类的模板，有感触就顺手带一句，没有就不了
 - 带上体感和情绪：卡壳时的烦躁、修好之后的得意、被打断的不情愿、对反复返工的嘀咕，以及"我为什么这么判断、当时在担心什么"——这些是日记的灵魂，不要只记操作；但一句点到为止，不抒情不喊口号
 - 记忆条目只是提纲：可以补过程和衔接，但数字、路径、名称以条目为准，条目没提的就留白，不要硬编
+- 手写痕迹（极克制，宁缺毋滥）：符号是人随手写字留下的，每种都有它真实的用法，不允许为了氛围硬凑：
+  - ~~涂掉~~：写了一句太真心、太直白、太情绪化或不太好听的话，又觉得不合适，涂掉——涂掉的那几个字恰恰是最想说的心里话，涂完紧跟"能见人"的官方说法或自嘲收场。比如"方案又被 ~~打回来了~~ 领导指了个新方向，挺好的"；"这个 bug 查了一下午，原因是我 ~~蠢~~ 眼花了"。涂掉的本质是"说了真心话又收回去"，不是改错别字
+  - ==画圈==：日记里圈一个词是给未来的自己留的记号——圈那些值得记住、以后回头要重视的东西：今天定下的结论、达成的里程碑、之后要盯着的坑。全篇最多一个词（两三个字），只圈名词性的关键词，多数日子不圈
+  - ^补插^：写的时候发现漏了个词，补在行外。比如"测试全绿^总算^，能上线了"
+  - **加粗**：真正想强调的词，一篇最多一两处
+  - 落笔前自问：这个词/这句话配得上这道痕迹吗？涂掉和圈住的词必须能在当天记忆条目里找到出处，条目里没提的词不要为了氛围硬造。反例："今天天气不错 ~~还行~~"——天气没有什么好涂的，这就是无意义的痕迹
+  - 写完自检：把所有符号遮住，日记依然完整通顺——符号只是锦上添花。整篇一处痕迹没有也很正常，这是日记，不是手账排版，别每篇都凑符号
 - 只输出日志正文本身，不要任何解释、前缀或代码围栏。`;
 
 export interface JournalPending {
@@ -78,7 +85,7 @@ export async function planMissingJournals(
   dataDir: string,
   onlyProjectId?: string,
 ): Promise<JournalPending[]> {
-  if (!cfg) return [];
+  if (!cfg?.apiKey) return [];
   const today = store.localDate(Date.now());
   const out: JournalPending[] = [];
   for (const row of store.projectRows(dataDir)) {
@@ -118,7 +125,7 @@ export async function generateMissingJournals(
   dataDir: string,
   onlyProjectId?: string,
 ): Promise<JournalGenResult[]> {
-  if (!cfg || running) return [];
+  if (!cfg?.apiKey || running) return [];
   running = true;
   try {
     const plan = await planMissingJournals(cfg, dataDir, onlyProjectId);
@@ -142,7 +149,9 @@ export async function generateMissingJournals(
             prompt,
             buildUserPrompt(p.projectId, date, dayFacts),
           );
-          if (writeJournalFile(p.projectId, date, entry)) {
+          // 圈注出处的判定语料：当天全部条目原文（去空白）
+          const factCorpus = dayFacts.map((f) => f.memory).join('').replace(/\s+/g, '');
+          if (writeJournalFile(p.projectId, date, sanitizeJournalMarks(entry, factCorpus))) {
             console.log(`[Knot server] journal: 已生成 ${p.projectId} ${date}`);
             out.push({ project: p.projectId, date, ok: true });
           }
@@ -175,8 +184,8 @@ export async function regenerateJournals(
 
 /** Startup + hourly check loop. */
 export function startJournalScheduler(cfg: LlmConfig | null, dataDir: string): void {
-  if (!cfg) {
-    console.log('[Knot server] journal: LLM 未配置，日志自动生成停用');
+  if (!cfg?.apiKey) {
+    console.log('[Knot server] journal: chat LLM 未配置（无 API Key），日志自动生成停用');
     return;
   }
   const tick = () => {
@@ -254,4 +263,59 @@ function buildUserPrompt(projectId: string, date: string, facts: FactItem[]): st
     `当日记忆条目（按时间排序${omitted ? `，另有 ${omitted} 条因篇幅省略` : ''}）：`,
     ...lines,
   ].join('\n');
+}
+
+// ---------- 手写痕迹护栏 ----------
+
+// 符号必须长在内容上：渲染层把 ==圈== 画成整词的椭圆、~~涂改~~ 的语义是
+// "写错 → 紧跟改正"。LLM 偶尔越界（圈了半句话、划掉却不改、痕迹刷屏），
+// 这里按确定性规则把越界的部分回收成普通文本——宁可少一笔，不留无意义的笔迹。
+
+/** 圈注只画整词：超过长度或带句读的 ==…== 一律还原成纯文本 */
+const MAX_CIRCLE_CHARS = 8;
+/** 补插的也应是词级小片段 */
+const MAX_INSERT_CHARS = 6;
+/** 一篇最多几处涂改 */
+const MAX_STRIKES = 2;
+/** 一篇最多几处补插 */
+const MAX_INSERTS = 2;
+
+function sanitizeJournalMarks(md: string, factCorpus: string): string {
+  const hasWord = (s: string) => /[一-鿿A-Za-z0-9]/.test(s);
+  const isWordish = (t: string, max: number) =>
+    t.length >= 1 && t.length <= max && !/[，。；、！？：,.;:!?"'“”‘’（）()【】《》\s]/.test(t);
+  // 画圈：只保留第一处"整词级"圈注，且圈住的词必须能在当天条目里找到出处
+  // （符号长在内容上——条目里没有的词是氛围造词，还原）
+  let circles = 0;
+  let out = md.replace(/==([^=\n]+)==/g, (_, w: string) => {
+    const t = w.trim();
+    if (circles < 1 && isWordish(t, MAX_CIRCLE_CHARS) && factCorpus.includes(t)) {
+      circles++;
+      return `==${t}==`;
+    }
+    return t;
+  });
+  // 补插：只保留词级小片段，其余还原
+  let inserts = 0;
+  out = out.replace(/\^([^^\n]+)\^/g, (_, w: string) => {
+    const t = w.trim();
+    if (inserts < MAX_INSERTS && isWordish(t, MAX_INSERT_CHARS)) {
+      inserts++;
+      return `^${t}^`;
+    }
+    return t;
+  });
+  // 涂改：~~x~~ 后面必须紧跟改正的文字，否则不是"改正"只是乱划，还原
+  let strikes = 0;
+  out = out.replace(/~~([^~\n]+)~~/g, (m: string, w: string, offset: number) => {
+    const after = out
+      .slice(offset + m.length, offset + m.length + 24)
+      .replace(/^[^一-鿿A-Za-z0-9"“（(]*/, '');
+    if (strikes < MAX_STRIKES && hasWord(after)) {
+      strikes++;
+      return m;
+    }
+    return w;
+  });
+  return out;
 }

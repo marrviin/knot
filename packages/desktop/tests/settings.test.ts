@@ -47,21 +47,23 @@ describe('settings.save (API key three-state semantics)', () => {
     settings.save(s, '', null, '', 'openai');
     expect(s.getSetting('llm_base_url')).toBe('https://api.openai.com/v1');
     expect(s.getSetting('llm_model')).toBe('gpt-5-mini');
-    expect(s.getSetting('llm_embed_model')).toBe('text-embedding-3-small');
+    // Embedding is not a stored setting anymore — it's always the bundled model.
+    expect(s.getSetting('llm_embed_model')).toBeNull();
   });
 });
 
-describe('provider / embedding config', () => {
+describe('provider config', () => {
   let s: ReturnType<typeof fakeStore>;
 
   beforeEach(() => {
     s = fakeStore();
   });
 
-  it('defaults to the openai protocol on a fresh install (neutral, no MiniMax bias)', () => {
+  it('defaults to the openai protocol and zero-config on a fresh install', () => {
     const cfg = settings.load(s);
     expect(cfg.provider).toBe('openai');
-    expect(cfg.embedModel).toBe('text-embedding-3-small');
+    // Embeddings always run on the bundled local model — no key needed.
+    expect(settings.isConfigured(cfg)).toBe(true);
   });
 
   it('infers the minimax provider from a stored pre-provider baseUrl', () => {
@@ -74,22 +76,18 @@ describe('provider / embedding config', () => {
     expect(settings.load(s).provider).toBe('openai');
   });
 
-  it('round-trips an openai provider with a custom embedding model', () => {
-    settings.save(s, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai', 'BAAI/bge-m3');
+  it('round-trips an openai provider with a custom base url and model', () => {
+    settings.save(s, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai');
     const cfg = settings.load(s);
     expect(cfg.provider).toBe('openai');
-    expect(cfg.embedModel).toBe('BAAI/bge-m3');
-    expect(settings.embedDimsOf(cfg.embedModel)).toBe(1024);
-    expect(settings.embedSignature(cfg)).toBe('openai/baai/bge-m3');
+    expect(cfg.baseUrl).toBe('https://api.siliconflow.cn/v1');
+    expect(cfg.model).toBe('Qwen/Qwen3-32B');
   });
 
-  it('embedSignature changes whenever the embedding model identity changes', () => {
-    settings.save(s, '', null, '', 'minimax', 'embo-01');
-    const minimax = settings.load(s);
-    settings.save(s, '', null, '', 'openai', 'text-embedding-3-small');
-    const openai = settings.load(s);
-    // Same dims (1536) but a different model = a different vector space.
-    expect(settings.embedSignature(minimax)).not.toBe(settings.embedSignature(openai));
+  it('local mode is always configured, even with no key (embeddings are bundled)', () => {
+    // No API key anywhere in the store — the memory layer must still be usable.
+    settings.save(s, 'https://api.siliconflow.cn/v1', '', 'Qwen/Qwen3-32B', 'openai');
+    expect(settings.isConfigured(settings.load(s))).toBe(true);
   });
 });
 

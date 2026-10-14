@@ -1,9 +1,9 @@
 /**
  * App shell (aligned with manta-compare's layout): a persistent left sidebar
  * (project list, antd Menu + pc-menu-skin) + a content card on the right
- * (rounded, outlined, floating on bg-panel). Global providers
- * (StyleProvider / ConfigProvider / AntdApp) wrap the outermost layer;
- * toasts go through antd message (via the AntdApp context, inheriting the theme).
+ * (rounded, outlined, floating on bg-panel). Global providers (ThemeProviders)
+ * wrap the outermost layer; toasts go through antd message (via the AntdApp
+ * context, inheriting the theme).
  */
 import {
   useCallback,
@@ -17,6 +17,7 @@ import {
   App as AntdApp,
   AutoComplete,
   ConfigProvider,
+  Divider,
   Dropdown,
   Empty,
   Input,
@@ -27,8 +28,6 @@ import {
   Tag,
 } from "antd";
 import type { MenuProps } from "antd";
-import { StyleProvider } from "@ant-design/cssinjs";
-import zhCN from "antd/locale/zh_CN";
 import {
   BookOutlined,
   DeleteOutlined,
@@ -40,11 +39,12 @@ import {
   PlusOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
+import pkg from "../package.json";
 import * as api from "./api";
 import knotIllustration from "./assets/knot.png";
 import type { Fact, ImportProgress, Project } from "./types";
 import { menuSkinTheme } from "./menu-skin";
-import { SettingsModal } from "./settings-modal";
+import { ThemeProviders } from "./theme";
 import { AgentIcon } from "./agent-icon";
 import { InlineMd } from "./inline-md";
 import { MarqueeLabel } from "./marquee-label";
@@ -57,42 +57,9 @@ type ImportState = ImportProgress & { files: string[] };
 
 export default function App() {
   return (
-    <StyleProvider layer>
-      <ConfigProvider
-        locale={zhCN}
-        theme={{
-          cssVar: { key: "knot" },
-          token: {
-            // Seed colors aligned with manta-compare: accent blue + brand functional colors.
-            colorPrimary: "#3768fa",
-            colorInfo: "#3768fa",
-            colorSuccess: "#00b26f",
-            colorWarning: "#f08433",
-            colorError: "#f33b50",
-            // Softer borders, rounder surfaces, light desktop/container backgrounds.
-            colorBorder: "#e8e8ea",
-            borderRadius: 12,
-            borderRadiusSM: 8,
-            borderRadiusXS: 6,
-            colorBgLayout: "#f2f2f2",
-            colorBgContainer: "#fafafa",
-            controlItemBgActive: "rgba(0,0,0,0.06)",
-          },
-          components: {
-            // Flat buttons — remove antd's default primary/default/danger button shadows.
-            Button: {
-              primaryShadow: "none",
-              defaultShadow: "none",
-              dangerShadow: "none",
-            },
-          },
-        }}
-      >
-        <AntdApp message={{ top: 72 }}>
-          <Shell />
-        </AntdApp>
-      </ConfigProvider>
-    </StyleProvider>
+    <ThemeProviders>
+      <Shell />
+    </ThemeProviders>
   );
 }
 
@@ -101,7 +68,6 @@ function Shell() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // Ongoing existing-content imports, keyed by project path (drives the header
   // progress ring + file carousel in FactPanel)
   const [imports, setImports] = useState<Record<string, ImportState>>({});
@@ -157,6 +123,13 @@ function Shell() {
     reconnectMemory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The standalone settings window changed the memory service config — pick up the
+  // (possibly new) endpoint when it closes (replaces the old modal's onClose hook).
+  useEffect(() => {
+    const off = api.onSettingsClosed(() => reconnectMemory({ quiet: true }));
+    return off;
+  }, [reconnectMemory]);
 
   // Request sequence guard: during an import storm (facts-changed per file) the user
   // can switch projects — a late response for the old project must not overwrite the
@@ -297,7 +270,8 @@ function Shell() {
     // the consequence spelled out.
     modal.confirm({
       title: `移除项目「${project.name}」？`,
-      content: "该项目在记忆服务中的全部记忆（含向量）将被一并删除，此操作不可恢复。",
+      content:
+        "该项目在记忆服务中的全部记忆（含向量）将被一并删除，此操作不可恢复。",
       okText: "删除并移除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -414,7 +388,7 @@ function Shell() {
           </div>
 
           {projects.length === 0 ? (
-            <div className="shrink-0 pt-6">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={null} />
             </div>
           ) : (
@@ -434,11 +408,12 @@ function Shell() {
           <div className="mt-auto shrink-0 px-2 py-2">
             <button
               type="button"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => void api.openSettingsWindow()}
               className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-2 text-sm text-fg transition-colors hover:bg-hover"
             >
               <SettingOutlined />
               <span className="flex-1 text-left">设置</span>
+              <span className="text-xs text-muted">v{pkg.version}</span>
             </button>
           </div>
         </div>
@@ -469,17 +444,6 @@ function Shell() {
           </div>
         )}
       </div>
-
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false);
-          // Service enable/mode/URL changes in settings take effect in the main
-          // process immediately — pick up the (possibly new) endpoint here.
-          reconnectMemory({ quiet: true });
-        }}
-        onNotify={notify}
-      />
     </div>
   );
 }
@@ -681,6 +645,7 @@ function FactPanel({
                 })}
               </div>
             )}
+            <Divider vertical className="m-0" />
             {/* Rightmost entry: toggle the journal reader (experiment logs) */}
             <button
               type="button"
@@ -698,7 +663,7 @@ function FactPanel({
         </div>
         {watchAgents.length === 0 && (
           <p className="mt-1 mb-0 truncate text-xs text-muted">
-            （未配置监听卡片，见 设置 → 记忆监听）
+            （未配置监听卡片，见 设置 → 记忆管理）
           </p>
         )}
       </header>
@@ -707,62 +672,67 @@ function FactPanel({
         {journalMode ? (
           <JournalView project={project} onNotify={onNotify} />
         ) : hits ? (
-          <>
-            <p className="mb-3 text-xs text-muted">
-              {shownHits?.some((h) => h.semanticScore != null)
-                ? `混合检索「${query}」命中 ${shownHits.length} 条（关键词 + 语义，RRF 融合排序）`
-                : `关键词检索「${query}」命中 ${shownHits?.length ?? 0} 条（语义路径无足够相关的命中，如英文词查中文记忆）`}
-            </p>
-            {(shownHits?.length ?? 0) === 0 && (
-              <div className="mt-16">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="没有语义相关的记忆。"
-                />
-              </div>
-            )}
-            <Masonry
-              columns={{ xs: 2, sm: 2, md: 2, lg: 2, xl: 3, xxl: 4 }}
-              gutter={[16, 16]}
-              // On mount, fonts/styles aren't stable yet: the first height measurement runs large
-              // and is never re-measured, inflating the container height and making the scrollbar
-              // far longer than the content (large blank space at the bottom). `fresh` enables a
-              // per-item ResizeObserver that re-measures and corrects after height changes.
-              fresh
-              items={shownHits?.map((h) => ({
-                key: h.id,
-                data: h,
-                children: (
-                  <div className="rounded-xl border border-line bg-surface p-4">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      {h.semanticScore != null ? (
-                        <Tag
-                          bordered={false}
-                          color={h.semanticScore > 0.6 ? "green" : "default"}
-                          className="m-0"
-                        >
-                          相关度 {Math.round(h.semanticScore * 100)}%
-                        </Tag>
-                      ) : (
-                        <Tag bordered={false} className="m-0">
-                          关键词匹配
-                        </Tag>
-                      )}
+          (shownHits?.length ?? 0) === 0 ? (
+            // Empty state: header line + Empty centered together in the container
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+              <p className="m-0 text-xs text-muted">
+                {`关键词检索「${query}」命中 0 条（语义路径无足够相关的命中，如英文词查中文记忆）`}
+              </p>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="没有语义相关的记忆。"
+              />
+            </div>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted">
+                {shownHits?.some((h) => h.semanticScore != null)
+                  ? `混合检索「${query}」命中 ${shownHits.length} 条（关键词 + 语义，RRF 融合排序）`
+                  : `关键词检索「${query}」命中 ${shownHits?.length ?? 0} 条（语义路径无足够相关的命中，如英文词查中文记忆）`}
+              </p>
+              <Masonry
+                columns={{ xs: 2, sm: 2, md: 2, lg: 2, xl: 3, xxl: 4 }}
+                gutter={[16, 16]}
+                // On mount, fonts/styles aren't stable yet: the first height measurement runs large
+                // and is never re-measured, inflating the container height and making the scrollbar
+                // far longer than the content (large blank space at the bottom). `fresh` enables a
+                // per-item ResizeObserver that re-measures and corrects after height changes.
+                fresh
+                items={shownHits?.map((h) => ({
+                  key: h.id,
+                  data: h,
+                  children: (
+                    <div className="rounded-xl border border-line bg-surface p-4">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                        {h.semanticScore != null ? (
+                          <Tag
+                            bordered={false}
+                            color={h.semanticScore > 0.6 ? "green" : "default"}
+                            className="m-0"
+                          >
+                            相关度 {Math.round(h.semanticScore * 100)}%
+                          </Tag>
+                        ) : (
+                          <Tag bordered={false} className="m-0">
+                            关键词匹配
+                          </Tag>
+                        )}
+                      </div>
+                      <p className="m-0 text-sm leading-6 whitespace-pre-wrap wrap-anywhere">
+                        <InlineMd text={h.memory} />
+                      </p>
+                      <FactMeta
+                        agent={h.agent}
+                        type={h.type}
+                        source={h.source}
+                        time={h.updatedAt ? formatTime(h.updatedAt) : undefined}
+                      />
                     </div>
-                    <p className="m-0 text-sm leading-6 whitespace-pre-wrap wrap-anywhere">
-                      <InlineMd text={h.memory} />
-                    </p>
-                    <FactMeta
-                      agent={h.agent}
-                      type={h.type}
-                      source={h.source}
-                      time={h.updatedAt ? formatTime(h.updatedAt) : undefined}
-                    />
-                  </div>
-                ),
-              }))}
-            />
-          </>
+                  ),
+                }))}
+              />
+            </>
+          )
         ) : (
           <>
             <Masonry

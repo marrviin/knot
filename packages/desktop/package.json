@@ -14,17 +14,19 @@
     "dist": "electron-builder --mac"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
     "@knot/shared": "workspace:*",
     "better-sqlite3": "^12.4.1",
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "onnxruntime-node": "^1.30.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24",
-    "esbuild": "^0.25",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.25",
     "typescript": "^5.6.0",
     "vitest": "^3.2.7"
   }

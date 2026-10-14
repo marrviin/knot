@@ -8,9 +8,12 @@
 //!
 //! Ported behaviors (unchanged from the original):
 //! - LLM: provider-configurable — MiniMax (mem0's native minimax provider) or any
-//!   OpenAI-compatible service;
-//! - Embedding: MiniMax embo-01 via the local shim for the minimax protocol, or a
-//!   standard OpenAI-compatible /embeddings endpoint passed through;
+//!   OpenAI-compatible service. Optional: Knot's mem0 paths (infer:false add,
+//!   update, search, delete, getAll) never call it — a placeholder config stands
+//!   in when no API key is set, so the memory layer works with zero configuration.
+//! - Embedding: always the bundled bge-small-zh-v1.5 ONNX model, served by a local
+//!   /embeddings side-server in OpenAI wire format (see local-embedder.ts) —
+//!   there is no cloud-embedding path and no embedding configuration;
 //! - Vector store: mem0's built-in SQLite persistence (vectorStore.provider=memory +
 //!   dbPath); no Qdrant needed.
 
@@ -18,10 +21,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Memory, type MemoryConfig } from 'mem0ai/oss';
 
-import { embedDimsOf, embedSignatureOf, type LlmConfig } from '../config';
-import { startEmbeddingShim, type ShimHandle } from '../embedding-shim';
+import { embedSignatureOf, type LlmConfig } from '../config';
+import { LOCAL_EMBED_DIMS, resolveLocalModelDir, startLocalEmbedder, type ShimHandle } from '../local-embedder';
 import * as store from '../store';
-import { findNearDupIds, withTimeout, type FactItem, type IngestReport, type SemanticHit } from '@knot/shared';
+import {
+  findNearDupIds,
+  splitMemoryChunks,
+  withTimeout,
+  type FactItem,
+  type IngestReport,
+  type SemanticHit,
+} from '@knot/shared';
 
 /** Ingestion behavior tuning: keep the original language, no meta info, correct old memories on conflict */
 const CUSTOM_INSTRUCTIONS =
@@ -39,23 +49,24 @@ let ensurePromise: Promise<Memory | null> | null = null;
 const ADD_TIMEOUT_MS = 3 * 60_000; // embedding (RPM-cap retries) can legitimately take a while
 const QUERY_TIMEOUT_MS = 60_000;
 
-/** Lazily initialize or rebuild the mem0 instance from config. Returns null when
- *  the LLM block is unconfigured (server starts anyway; /health reports ready:false). */
+/** Lazily initialize or rebuild the mem0 instance from config. Embeddings always
+ *  run locally, so this only ever fails on a broken install (model assets gone). */
 export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Promise<Memory | null> {
   if (!cfg) return null;
   const key = `${cfg.provider}|${cfg.baseUrl}|${cfg.apiKey}|${cfg.model}|${cfg.embedModel}`;
   if (memory && currentKey === key) return memory;
   if (ensurePromise) return ensurePromise;
 
-  // Changing the embedding model changes the whole vector space — stored vectors
-  // (and the vector store's dimension) no longer match. Semantic search will fail
-  // loudly and fall back to keyword; surface the cause for whoever debugs it.
+  // A different embedding model (e.g. a bundled-model upgrade) changes the whole
+  // vector space — stored vectors (and the vector store's dimension) no longer
+  // match. Semantic search will fail loudly and fall back to keyword; surface
+  // the cause for whoever debugs it.
   const signature = embedSignatureOf(cfg);
   const sigFile = path.join(dataDir, 'embed-signature');
   const prevSignature = fs.existsSync(sigFile) ? fs.readFileSync(sigFile, 'utf8').trim() : '';
   if (prevSignature && prevSignature !== signature) {
     console.error(
-      `[Knot server] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与 ${embedDimsOf(cfg.embedModel)} 维新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
+      `[Knot server] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
     );
   }
 
@@ -65,42 +76,33 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
     if (shim) shim.close();
     let newShim: ShimHandle | null = null;
     try {
-      let embedder: MemoryConfig['embedder'];
-      let llm: MemoryConfig['llm'];
-      if (cfg.provider === 'openai') {
-        // OpenAI-compatible: standard /chat/completions + /embeddings, straight through.
-        llm = {
-          provider: 'openai',
-          config: { apiKey: cfg.apiKey, model: cfg.model, baseURL: cfg.baseUrl, maxTokens: 4000, temperature: 0 },
-        };
-        embedder = {
-          provider: 'openai',
-          config: {
-            apiKey: cfg.apiKey,
-            model: cfg.embedModel,
-            baseURL: cfg.baseUrl,
-            embeddingDims: embedDimsOf(cfg.embedModel),
-          },
-        };
-      } else {
-        // MiniMax: its /v1/embeddings rejects OpenAI's `input` (needs `texts`) and
-        // answers {vectors} — translate via the local shim (serialized + rate-limit
-        // retries for embo-01's RPM cap).
-        newShim = await startEmbeddingShim(cfg.apiKey, cfg.baseUrl, cfg.embedModel);
-        process.env.OPENAI_BASE_URL = `http://127.0.0.1:${newShim.port}/v1`;
-        llm = {
-          provider: 'minimax',
-          config: { apiKey: cfg.apiKey, model: cfg.model, baseURL: cfg.baseUrl, maxTokens: 4000, temperature: 0 },
-        };
-        embedder = {
-          provider: 'openai',
-          config: {
-            apiKey: cfg.apiKey,
-            model: cfg.embedModel,
-            embeddingDims: embedDimsOf(cfg.embedModel),
-          },
-        };
+      // Vectors always come from the local /embeddings side-server (bundled model).
+      const modelDir = resolveLocalModelDir();
+      if (!modelDir) {
+        throw new Error('未找到内置 embedding 模型（models/bge-small-zh-v1.5）— 请重新构建 @knot/server');
       }
+      newShim = await startLocalEmbedder(modelDir);
+      const embedder: MemoryConfig['embedder'] = {
+        provider: 'openai',
+        config: {
+          apiKey: 'local',
+          model: cfg.embedModel,
+          baseURL: `http://127.0.0.1:${newShim.port}/v1`,
+          embeddingDims: LOCAL_EMBED_DIMS,
+        },
+      };
+      // The chat LLM is real only when the user set a key; without one, mem0
+      // still requires an llm block but Knot's paths never invoke it — stand in
+      // a dead-port config so any accidental call fails loudly instead of hanging.
+      const llm: MemoryConfig['llm'] = cfg.apiKey
+        ? {
+            provider: cfg.provider,
+            config: { apiKey: cfg.apiKey, model: cfg.model, baseURL: cfg.baseUrl, maxTokens: 4000, temperature: 0 },
+          }
+        : {
+            provider: 'openai',
+            config: { apiKey: 'unused', model: 'unused', baseURL: 'http://127.0.0.1:9/v1', maxTokens: 4000, temperature: 0 },
+          };
       shim = newShim;
       const m = new Memory({
         llm,
@@ -109,7 +111,7 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
           provider: 'memory',
           config: {
             collectionName: 'knot',
-            dimension: embedDimsOf(cfg.embedModel),
+            dimension: LOCAL_EMBED_DIMS,
             dbPath: path.join(mem0Dir, 'vectors.db'),
           },
         },
@@ -142,22 +144,14 @@ export function isReady(): boolean {
   return memory !== null;
 }
 
-/** Batch-embed texts through the configured /embeddings endpoint. MiniMax goes
- *  through the local shim (which answers in OpenAI format); openai provider is a
- *  native OpenAI-compatible endpoint. Returns null when unconfigured — compaction
- *  is best-effort, not a hard dependency. */
+/** Batch-embed texts through the local embedding side-server (near-dup compaction).
+ *  Returns null when unconfigured — compaction is best-effort, not a hard dependency. */
 async function embedTexts(cfg: LlmConfig | null, shimPort: number | null, texts: string[]): Promise<number[][] | null> {
-  if (!cfg || !cfg.apiKey) return null;
-  // MiniMax: route through the shim (it translates OpenAI's `input` into the
-  // native `texts`+`type` the upstream requires). Original hit s.baseUrl directly
-  // with OpenAI format — the shim is strictly more correct for the minimax family.
-  const url =
-    cfg.provider === 'minimax' && shimPort
-      ? `http://127.0.0.1:${shimPort}/embeddings`
-      : `${cfg.baseUrl.replace(/\/$/, '')}/embeddings`;
+  if (!cfg || !shimPort) return null;
+  const url = `http://127.0.0.1:${shimPort}/embeddings`;
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: 'Bearer local', 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: cfg.embedModel, input: texts }),
     signal: AbortSignal.timeout(60_000),
   });
@@ -176,6 +170,8 @@ async function compactNearDups(
   shimPort: number | null,
   results: { id: string; memory: string }[],
   preferExisting: Set<string>,
+  /** Pre-ingest truth (id → text): tells fresh re-ADDs apart from existing rows. */
+  beforeMap: Map<string, string>,
 ): Promise<Map<string, string>> {
   if (results.length < 2) return new Map();
   // Canonical preference: a fact the client mirror already holds beats a fresh re-ADD.
@@ -187,6 +183,21 @@ async function compactNearDups(
   if (!embs) return new Map();
   ordered.forEach((r, i) => vectors.set(r.id, embs[i]!));
   const dupOf = findNearDupIds(ordered, vectors);
+  // Byte-identical re-adds keep the existing row (no id churn on unchanged
+  // re-imports). But when the fresh text actually differs, the fresh one wins —
+  // it was just read from a newer file, and letting the mirror-held twin win
+  // would silently swallow the update.
+  const textOf = new Map(results.map((r) => [r.id, r.memory]));
+  for (const [dupId, canonicalId] of [...dupOf]) {
+    if (
+      !beforeMap.has(dupId) &&
+      beforeMap.has(canonicalId) &&
+      textOf.get(dupId) !== textOf.get(canonicalId)
+    ) {
+      dupOf.delete(dupId);
+      dupOf.set(canonicalId, dupId);
+    }
+  }
   for (const id of dupOf.keys()) {
     await withTimeout(m.delete(id), QUERY_TIMEOUT_MS, '删除近重复记忆');
   }
@@ -243,10 +254,12 @@ function diffReports(
 
 /** Ingest raw memory text into mem0, then return the truth diff + full fact list
  *  (the client reconciles its mirror from it). Stored with infer: false — the
- *  text is agent-curated already, so no LLM extraction; near-dup compaction
- *  below keeps re-imports deduped. Does not rely on add()'s results events: in
- *  practice add events on 3.3.1 can be empty even though the data did land in
- *  the vector store, so the real state from getAll is the most reliable source. */
+ *  text is agent-curated already, so no LLM extraction; long files are split
+ *  deterministically (see splitMemoryChunks) so each chunk gets a focused vector,
+ *  and near-dup compaction below keeps re-imports deduped. Does not rely on
+ *  add()'s results events: in practice add events on 3.3.1 can be empty even
+ *  though the data did land in the vector store, so the real state from getAll
+ *  is the most reliable source. */
 export async function ingest(
   cfg: LlmConfig | null,
   dataDir: string,
@@ -266,15 +279,24 @@ export async function ingest(
   const before = await listAll(m, projectId);
   const beforeMap = new Map(before.map((f) => [f.id, f.memory]));
 
-  await withTimeout(
-    m.add(raw, {
-      userId: projectId,
-      metadata: { agent: meta.agent, type: meta.type, source: meta.source },
-      infer: false,
-    }),
-    ADD_TIMEOUT_MS,
-    '记忆入库',
-  );
+  const chunks = splitMemoryChunks(raw);
+  for (let i = 0; i < chunks.length; i++) {
+    await withTimeout(
+      m.add(chunks[i]!, {
+        userId: projectId,
+        metadata: {
+          agent: meta.agent,
+          type: meta.type,
+          source: meta.source,
+          // Provenance for chunked files ("2/3") — single-chunk ingests stay clean.
+          ...(chunks.length > 1 ? { part: `${i + 1}/${chunks.length}` } : {}),
+        },
+        infer: false,
+      }),
+      ADD_TIMEOUT_MS,
+      '记忆入库',
+    );
+  }
 
   // Near-dup compaction runs on every ingest (best-effort — failure must not break
   // the ingest itself): re-ADDs of nearly identical text are deleted from mem0.
@@ -286,6 +308,7 @@ export async function ingest(
     shimPort,
     after.map((f) => ({ id: f.id, memory: f.memory })),
     preferExisting,
+    beforeMap,
   ).catch(() => new Map<string, string>());
   if (dupOf.size) after = after.filter((f) => !dupOf.has(f.id));
 

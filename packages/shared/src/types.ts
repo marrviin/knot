@@ -2,8 +2,9 @@
 //! Previously duplicated across electron/mem0.ts and server/src/memory-core.ts
 //! (with "keep in sync" comments); this is now the single source of truth.
 
-/** LLM protocol family. 'minimax' → MiniMax-native LLM + shim-translated embo-01
- *  embeddings; 'openai' → OpenAI-compatible chat + embeddings, passed straight through. */
+/** LLM protocol family. 'minimax' → MiniMax-native LLM; 'openai' → OpenAI-compatible
+ *  chat. Only the chat side is user-configurable — embeddings always run locally
+ *  (the bundled bge model), so there is no embedding configuration surface. */
 export type LlmProvider = 'minimax' | 'openai';
 
 export interface LlmConfig {
@@ -11,6 +12,7 @@ export interface LlmConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** Informational: always the bundled local model — embeddings have no config. */
   embedModel: string;
 }
 

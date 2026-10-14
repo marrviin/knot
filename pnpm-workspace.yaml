@@ -6,6 +6,8 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
 
 overrides:
   # electron-builder 26.x 的 app-builder-lib 依赖 @electron/get 的

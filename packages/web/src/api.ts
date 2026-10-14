@@ -56,6 +56,21 @@ export async function initMemoryEndpoint(): Promise<boolean> {
   return true;
 }
 
+/** Retry a display read once after re-bootstrapping the endpoint. The local
+ *  child service can die mid-session; re-invoking memory_endpoint respawns it
+ *  (the main process re-verifies liveness), so one retry turns a dead child
+ *  into a transparent reconnect instead of per-view errors until app restart. */
+async function withReconnect<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (!hasDesktopBridge()) throw e;
+    const ok = await initMemoryEndpoint().catch(() => false);
+    if (!ok) throw e;
+    return call();
+  }
+}
+
 /** Desktop post-mutation mirror sync: the main process reconciles its local
  *  mirror store (MCP keyword search + hybrid search read it) from the service
  *  after the renderer mutated facts over HTTP. No-op cost when nothing changed. */
@@ -89,15 +104,17 @@ function mapProject(p: ServerProject): Project {
 }
 
 export async function listProjects(): Promise<Project[]> {
-  requireEndpoint();
-  const { data } = await listProjectsHttp();
-  if (!data) throw new Error("项目列表加载失败");
-  // Server rows are insertion-ordered; the reserved global project pins first
-  // regardless of when it was seeded (same order the desktop mirror used).
-  const rows = data.projects.map(mapProject);
-  const globalIdx = rows.findIndex((p) => p.path === GLOBAL_PROJECT);
-  if (globalIdx > 0) rows.unshift(...rows.splice(globalIdx, 1));
-  return rows;
+  return withReconnect(async () => {
+    requireEndpoint();
+    const { data } = await listProjectsHttp();
+    if (!data) throw new Error("项目列表加载失败");
+    // Server rows are insertion-ordered; the reserved global project pins first
+    // regardless of when it was seeded (same order the desktop mirror used).
+    const rows = data.projects.map(mapProject);
+    const globalIdx = rows.findIndex((p) => p.path === GLOBAL_PROJECT);
+    if (globalIdx > 0) rows.unshift(...rows.splice(globalIdx, 1));
+    return rows;
+  });
 }
 
 /** True when running inside the desktop shell (preload bridge present); the
@@ -160,10 +177,12 @@ function mapFact(projectId: string, f: ServerFact): Fact {
 }
 
 export async function listFacts(projectId: string): Promise<Fact[]> {
-  requireEndpoint();
-  const { data } = await listFactsHttp({ path: { projectId } });
-  if (!data) throw new Error("记忆列表加载失败");
-  return data.facts.map((f) => mapFact(projectId, f));
+  return withReconnect(async () => {
+    requireEndpoint();
+    const { data } = await listFactsHttp({ path: { projectId } });
+    if (!data) throw new Error("记忆列表加载失败");
+    return data.facts.map((f) => mapFact(projectId, f));
+  });
 }
 
 export async function addFact(projectId: string, content: string): Promise<void> {
@@ -212,7 +231,6 @@ export interface LlmSettings {
   provider: "minimax" | "openai";
   baseUrl: string;
   model: string;
-  embedModel: string;
   hasApiKey: boolean;
   /** Memory storage: "local" child service (default) or "remote" user-deployed
    *  instance of server/ — same HTTP client, only the address differs. */
@@ -231,7 +249,6 @@ export const saveSettings = (
   apiKey: string | null,
   model: string,
   provider: "minimax" | "openai",
-  embedModel?: string,
   mode?: "local" | "remote",
   remoteUrl?: string,
   remoteToken?: string | null,
@@ -242,7 +259,6 @@ export const saveSettings = (
     apiKey,
     model,
     provider,
-    embedModel,
     mode,
     remoteUrl,
     remoteToken,
@@ -260,6 +276,59 @@ export interface ConnectionTestResult {
 
 export const testMemoryConnection = (url: string, token: string | null) =>
   window.knot.invoke<ConnectionTestResult>("test_memory_connection", url, token);
+
+// ---------- Saved model library (multiple configs, one active) ----------
+
+/** One entry of the model library (apiKey is never sent to the renderer). */
+export interface ModelEntry {
+  id: string;
+  provider: "minimax" | "openai";
+  baseUrl: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
+export const listModels = () =>
+  window.knot.invoke<{ models: ModelEntry[]; activeId: string | null }>(
+    "list_models",
+  );
+
+/** Add or update an entry. apiKey: null = clear the key; undefined = keep the
+ *  stored one; a string = replace. Editing the active entry applies it
+ *  immediately and may return the embedding-invalidation notice. */
+export const saveModel = (
+  entry: Omit<ModelEntry, "hasApiKey" | "id"> & { id?: string },
+  apiKey?: string | null,
+) =>
+  window.knot.invoke<{
+    model: ModelEntry;
+    activeId: string | null;
+    notice?: string;
+  }>("save_model", entry, apiKey ?? undefined);
+
+export const deleteModel = (id: string) =>
+  window.knot.invoke("delete_model", id);
+
+/** Make a library entry the active model service (hot-reloads watching; may
+ *  return the embedding-invalidation notice). */
+export const activateModel = (id: string) =>
+  window.knot.invoke<{ activeId: string | null; notice?: string }>(
+    "activate_model",
+    id,
+  );
+
+// ---------- Standalone settings window ----------
+
+export const openSettingsWindow = () =>
+  window.knot.invoke("open_settings");
+
+export const closeSettingsWindow = () =>
+  window.knot.invoke("close_settings");
+
+/** Fired to the main window when the settings BrowserWindow closes — the main
+ *  window re-bootstraps the memory endpoint (the old modal's onClose hook). */
+export const onSettingsClosed = (cb: () => void) =>
+  window.knot.listen("knot://settings-closed", cb);
 
 // ---------- Last opened project ----------
 
@@ -321,41 +390,47 @@ export async function searchMemories(
   projectId: string,
   query: string,
 ): Promise<SemanticHit[]> {
-  requireEndpoint();
-  const { data } = await searchMemoriesHttp({ body: { projectId, query } });
-  if (!data) throw new Error("检索失败");
-  return data.hits.map((h) => ({
-    id: h.id,
-    memory: h.memory,
-    // Service score is the embedding cosine; the BM25 half of the old desktop
-    // hybrid path lives in the main process (MCP search) — display search uses
-    // the service's semantic ranking.
-    semanticScore: h.score,
-    agent: h.agent,
-    type: h.type,
-    source: h.source,
-    updatedAt: h.updatedAt ?? undefined,
-  }));
+  return withReconnect(async () => {
+    requireEndpoint();
+    const { data } = await searchMemoriesHttp({ body: { projectId, query } });
+    if (!data) throw new Error("检索失败");
+    return data.hits.map((h) => ({
+      id: h.id,
+      memory: h.memory,
+      // Service score is the embedding cosine; the BM25 half of the old desktop
+      // hybrid path lives in the main process (MCP search) — display search uses
+      // the service's semantic ranking.
+      semanticScore: h.score,
+      agent: h.agent,
+      type: h.type,
+      source: h.source,
+      updatedAt: h.updatedAt ?? undefined,
+    }));
+  });
 }
 
 // ---------- Journals (.knot/logs, read-only — agents write the files) ----------
 
 export async function listJournals(projectId: string): Promise<JournalEntry[]> {
-  requireEndpoint();
-  const { data } = await listJournalsHttp({ path: { projectId } });
-  if (!data) throw new Error("日志列表加载失败");
-  return data.journals;
+  return withReconnect(async () => {
+    requireEndpoint();
+    const { data } = await listJournalsHttp({ path: { projectId } });
+    if (!data) throw new Error("日志列表加载失败");
+    return data.journals;
+  });
 }
 
 /** Days with memory activity but no journal file, scoped to one project when
  *  given (the journal view's button) or across all projects */
 export async function getJournalPending(projectId?: string): Promise<JournalPending[]> {
-  requireEndpoint();
-  const { data } = await getJournalPendingHttp(
-    projectId ? { query: { projectId } } : {},
-  );
-  if (!data) throw new Error("待生成检查失败");
-  return data.pending;
+  return withReconnect(async () => {
+    requireEndpoint();
+    const { data } = await getJournalPendingHttp(
+      projectId ? { query: { projectId } } : {},
+    );
+    if (!data) throw new Error("待生成检查失败");
+    return data.pending;
+  });
 }
 
 /** Kick the journal writer (fire-and-forget server-side); same scoping */

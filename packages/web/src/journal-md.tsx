@@ -4,6 +4,9 @@
  * lists, fenced code, blockquotes, horizontal rules, paragraphs. All inline
  * syntax inside text runs through InlineMd; literal text stays React-escaped,
  * so there's no XSS surface.
+ *
+ * Journal entries always render in the "hand" inline variant (手写涂改/画圈 marks)
+ * and paragraphs carry jnl-para so the paper's ruled lines land only on body text.
  */
 import type { ReactNode } from "react";
 
@@ -109,16 +112,16 @@ function renderBlock(b: Block, keyPrefix: string): ReactNode {
     case "heading": {
       const Tag = `h${b.level}` as const;
       return (
-        <Tag key={k} className={`${HEADING_CLASS[b.level]} text-fg`}>
-          <InlineMd text={b.text} />
+        <Tag key={k} className={HEADING_CLASS[b.level]}>
+          <InlineMd hand text={b.text} />
         </Tag>
       );
     }
     case "paragraph":
       return (
-        <p key={k} className="my-3 text-sm leading-7 whitespace-pre-wrap wrap-anywhere first:mt-0">
+        <p key={k} className="jnl-para my-3 text-sm leading-7 whitespace-pre-wrap wrap-anywhere first:mt-0">
           {b.lines.map((l, i) => (
-            <InlineMd key={i} text={l} />
+            <InlineMd key={i} hand text={l} />
           ))}
         </p>
       );
@@ -127,7 +130,7 @@ function renderBlock(b: Block, keyPrefix: string): ReactNode {
         <ul key={k} className="my-3 list-disc space-y-1 pl-5 text-sm leading-7">
           {b.items.map((it, i) => (
             <li key={i}>
-              <InlineMd text={it} />
+              <InlineMd hand text={it} />
             </li>
           ))}
         </ul>
@@ -137,7 +140,7 @@ function renderBlock(b: Block, keyPrefix: string): ReactNode {
         <ol key={k} className="my-3 list-decimal space-y-1 pl-5 text-sm leading-7">
           {b.items.map((it, i) => (
             <li key={i}>
-              <InlineMd text={it} />
+              <InlineMd hand text={it} />
             </li>
           ))}
         </ol>
@@ -146,7 +149,7 @@ function renderBlock(b: Block, keyPrefix: string): ReactNode {
       return (
         <pre
           key={k}
-          className="my-3 overflow-x-auto rounded-lg bg-fill p-3 text-xs leading-6"
+          className="jnl-block my-3 overflow-x-auto rounded-lg p-3 text-xs leading-6"
         >
           <code className="font-mono">{b.lines.join("\n")}</code>
         </pre>
@@ -155,15 +158,15 @@ function renderBlock(b: Block, keyPrefix: string): ReactNode {
       return (
         <blockquote
           key={k}
-          className="my-3 border-l-2 border-(--color-line) pl-3 text-sm leading-7 text-muted"
+          className="jnl-block my-3 border-l-2 border-(--jnl-pen) pl-3 text-sm leading-7 text-muted"
         >
           {b.lines.map((l, i) => (
-            <InlineMd key={i} text={l} />
+            <InlineMd key={i} hand text={l} />
           ))}
         </blockquote>
       );
     case "hr":
-      return <hr key={k} className="my-4 border-(--color-line)" />;
+      return <hr key={k} className="my-4 border-(--jnl-pen)" />;
   }
 }
 

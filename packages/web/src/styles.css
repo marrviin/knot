@@ -20,6 +20,9 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 @import './styles/tokens.css';
+/* 内置手写字体（fetch-font.mjs 产物，分片 woff2 + unicode-range，按需加载；
+ * 未下载时是空占位，回退系统楷体） */
+@import './assets/fonts/lxgw-wenkai-lite/font.css';
 @import './styles/base.css';
 @import './styles/antd.css';
 @import './styles/components.css';

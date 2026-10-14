@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "generate:api": "openapi-ts -i ../server/openapi.json -o src/client"
+    "generate:api": "openapi-ts -i ../server/openapi.json -o src/client",
+    "fetch:font": "node scripts/fetch-font.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",

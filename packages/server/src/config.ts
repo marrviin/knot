@@ -2,10 +2,10 @@
 //! local mode (Electron spawns it as a child process, passing the user's LLM
 //! settings through env) and remote mode (user-deployed Docker, env in compose).
 
-import { PROVIDER_DEFAULTS, embedDimsOf, embedSignatureOf, type LlmConfig, type LlmProvider } from '@knot/shared';
+import { LOCAL_EMBED_MODEL, PROVIDER_DEFAULTS, embedSignatureOf, type LlmConfig, type LlmProvider } from '@knot/shared';
 
 // Shared contracts — memory-core.ts and app.ts keep importing them from './config'.
-export { embedDimsOf, embedSignatureOf };
+export { embedSignatureOf, LOCAL_EMBED_MODEL };
 export type { LlmConfig, LlmProvider };
 
 export interface ServerConfig {
@@ -18,20 +18,23 @@ export interface ServerConfig {
   /** Access-Control-Allow-Origin: true reflects the request origin (local
    *  renderer / file:// builds); a remote deployment pins an explicit origin. */
   corsOrigin: boolean | string;
-  llm: LlmConfig | null;
+  /** Always present — the chat LLM inside may be unkeyed (local-only mode). */
+  llm: LlmConfig;
 }
 
-/** Parse the LLM block from env; null when unconfigured (server starts, /health
- *  reports ready:false, ingest answers 503 with the reason). */
-function llmFromEnv(env: NodeJS.ProcessEnv): LlmConfig | null {
+/** Parse the LLM block from env. The chat LLM is optional — embeddings always
+ *  run locally (the bundled bge model), so the memory layer works with zero
+ *  configuration; the API key only enables the chat side (journal backfill). */
+function llmFromEnv(env: NodeJS.ProcessEnv): LlmConfig {
   const provider: LlmProvider = env.KNOT_LLM_PROVIDER === 'minimax' ? 'minimax' : 'openai';
-  const apiKey = (env.KNOT_LLM_API_KEY ?? '').trim();
   const d = PROVIDER_DEFAULTS[provider];
-  const baseUrl = (env.KNOT_LLM_BASE_URL ?? '').trim() || d.baseUrl;
-  const model = (env.KNOT_LLM_MODEL ?? '').trim() || d.model;
-  const embedModel = (env.KNOT_LLM_EMBED_MODEL ?? '').trim() || d.embedModel;
-  if (!apiKey) return null;
-  return { provider, baseUrl, apiKey, model, embedModel };
+  return {
+    provider,
+    baseUrl: (env.KNOT_LLM_BASE_URL ?? '').trim() || d.baseUrl,
+    apiKey: (env.KNOT_LLM_API_KEY ?? '').trim(),
+    model: (env.KNOT_LLM_MODEL ?? '').trim() || d.model,
+    embedModel: LOCAL_EMBED_MODEL,
+  };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {

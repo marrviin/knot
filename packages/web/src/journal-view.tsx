@@ -34,6 +34,30 @@ function dayRelative(date: string): string | null {
   return null;
 }
 
+/** Static hand-drawn underline for the date header (same every render — no
+ *  jitter needed for a fixed label length). */
+const DATE_UNDERLINE =
+  "M 1.5 4.5 Q 15 2.5 30 4 Q 50 6 70 3.5 Q 85 2 98.5 4.5";
+
+/** 红笔圈注的「今天/昨天」徽章（手绘椭圆，静态路径） */
+function RedCircleBadge({ text }: { text: string }) {
+  return (
+    <span className="jnl-badge">
+      {text}
+      <svg className="jnl-mark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+        <path
+          d="M 4 15 C 2 8, 20 2.5, 52 2.5 C 84 2.5, 99 8, 97.5 15 C 96 22, 75 26, 48 25.5 C 22 25, 6 21.5, 4 15"
+          fill="none"
+          stroke="var(--jnl-red)"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </span>
+  );
+}
+
 export function JournalView({
   project,
   onNotify,
@@ -121,22 +145,28 @@ export function JournalView({
   }
 
   return (
-    <div className="mx-auto max-w-3xl pb-8">
+    <div className="jnl-paper mx-auto max-w-3xl px-8 pb-10 pt-4">
       <div className="mb-2 flex justify-end">{genButton}</div>
       {entries.map((entry) => {
         const rel = dayRelative(entry.date);
         return (
           <section key={entry.date} className="pt-6 first:pt-2">
-            <div className="mb-1 flex items-baseline gap-2 border-b border-line pb-2">
-              <h3 className="m-0 text-[15px] font-semibold text-fg">
+            <div className="jnl-date mb-1 flex items-baseline gap-2 pb-1">
+              <h3 className="m-0 text-xl font-semibold">
                 {dayLabel(entry.date)}
               </h3>
-              {rel && (
-                <span className="text-xs text-accent" title="最近更新">
-                  {rel}
-                </span>
-              )}
+              {rel && <RedCircleBadge text={rel} />}
             </div>
+            <svg className="jnl-date-rule" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+              <path
+                d={DATE_UNDERLINE}
+                fill="none"
+                stroke="var(--jnl-pen)"
+                strokeWidth={1.4}
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
             <JournalMd text={entry.content} />
           </section>
         );

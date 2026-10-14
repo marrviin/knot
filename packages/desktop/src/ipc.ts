@@ -10,6 +10,7 @@ import * as inject from "./inject";
 import * as mem0 from "./mem0";
 import * as watcher from "./watcher";
 import * as mcpServer from "./mcp-server";
+import { createOrShowSettingsWindow, closeSettingsWindow } from "./settings-window";
 import { log } from "./log";
 
 export interface IpcContext {
@@ -44,6 +45,18 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle("sync_mirror", (_e, projectId: string) =>
     ok(() => mem0.restoreMirror(projectId)),
   );
+
+  // ---------- Standalone settings window ----------
+
+  // Open (or focus the existing) settings window. The sender window is the main
+  // window — it receives knot://settings-closed when the settings window closes.
+  ipcMain.handle("open_settings", (e) => {
+    const mainWin = BrowserWindow.fromWebContents(e.sender);
+    if (!mainWin) throw new Error("主窗口不可用");
+    createOrShowSettingsWindow(mainWin);
+  });
+
+  ipcMain.handle("close_settings", () => ok(() => closeSettingsWindow()));
 
   // ---------- Projects ----------
 
@@ -122,25 +135,12 @@ export function registerIpc(ctx: IpcContext): void {
       apiKey: string | null,
       model: string,
       provider: "minimax" | "openai",
-      embedModel?: string,
       mode?: "local" | "remote",
       remoteUrl?: string,
       remoteToken?: string | null,
     ) =>
       ok(() => {
-        const beforeLoad = settings.load(store);
-        const before = settings.embedSignature(beforeLoad);
-        settings.save(
-          store,
-          baseUrl,
-          apiKey,
-          model,
-          provider,
-          embedModel,
-          mode,
-          remoteUrl,
-          remoteToken,
-        );
+        settings.save(store, baseUrl, apiKey, model, provider, mode, remoteUrl, remoteToken);
         // Any settings save takes effect immediately: rebuild watchers and import
         // pending existing content — no app restart needed. Fire-and-forget: the
         // import is minutes of embedding calls; progress events drive the UI.
@@ -150,17 +150,92 @@ export function registerIpc(ctx: IpcContext): void {
             ctx.onFactsChanged({ path: projectId, ...report });
           })
           .catch((e) => log(`save_settings 触发的存量导入失败: ${e}`));
-        const afterLoad = settings.load(store);
-        const after = settings.embedSignature(afterLoad);
-        // A changed embedding model invalidates every stored vector: old memories
-        // become unsearchable in the semantic path until the store is rebuilt.
-        // Remote mode skips this — vectors live on the service, which warns on
-        // its own logs (the client only holds the mirror).
-        if (mode !== "remote" && before !== after) {
-          return `配置已保存。注意：Embedding 模型已变更（${before} → ${after}），已存的记忆向量与新空间不匹配，语义检索将暂时不可用；建议清空记忆后重新导入。`;
-        }
+        // Embeddings always run on the bundled local model, so a settings save can
+        // no longer change the embedding space (and invalidate stored vectors).
         return undefined;
       }),
+  );
+
+  // ---------- Saved model library (multiple configs, one active) ----------
+
+  // Applying a model config to the active llm_* scalars + hot reload. Shared by
+  // activate_model and by save_model when the edited entry is the active one.
+  const applyLlmConfig = (
+    apiKey: string | null,
+    entry: { provider: "minimax" | "openai"; baseUrl: string; model: string },
+  ): void => {
+    settings.save(store, entry.baseUrl, apiKey, entry.model, entry.provider);
+    // Same take-effect-immediately contract as save_settings (no app restart).
+    watcher.rescan();
+    void watcher
+      .importExisting((projectId, report) => {
+        ctx.onFactsChanged({ path: projectId, ...report });
+      })
+      .catch((e) => log(`模型切换触发的存量导入失败: ${e}`));
+  };
+
+  ipcMain.handle("list_models", () =>
+    ok(() => {
+      const models = settings.loadModels(store);
+      return {
+        models: models.map((m) => ({
+          id: m.id,
+          provider: m.provider,
+          baseUrl: m.baseUrl,
+          model: m.model,
+          hasApiKey: !!m.apiKey,
+        })),
+        activeId: settings.activeIdOf(store, models),
+      };
+    }),
+  );
+
+  ipcMain.handle(
+    "save_model",
+    (
+      _e,
+      entry: { id?: string; provider: "minimax" | "openai"; baseUrl: string; model: string },
+      apiKey: string | null | undefined,
+    ) =>
+      ok(() => {
+        const beforeActiveId = settings.activeIdOf(store, settings.loadModels(store));
+        const saved = settings.saveModel(store, {
+          ...entry,
+          // undefined = keep the stored key (field untouched); '' = clear; non-empty = replace.
+          apiKey: apiKey === undefined ? undefined : (apiKey ?? ""),
+        });
+        // Editing the active entry applies it immediately (same contract as save_settings);
+        // adding/editing an inactive entry only touches the library.
+        if (saved.id === beforeActiveId) {
+          return {
+            model: { ...saved, apiKey: undefined, hasApiKey: !!saved.apiKey },
+            activeId: saved.id,
+            notice: (applyLlmConfig(saved.apiKey || null, saved), undefined),
+          };
+        }
+        return {
+          model: { ...saved, apiKey: undefined, hasApiKey: !!saved.apiKey },
+          activeId: beforeActiveId,
+          notice: undefined,
+        };
+      }),
+  );
+
+  ipcMain.handle("delete_model", (_e, id: string) =>
+    ok(() => {
+      settings.deleteModel(store, id);
+    }),
+  );
+
+  ipcMain.handle("activate_model", (_e, id: string) =>
+    ok(() => {
+      const entry = settings.loadModels(store).find((m) => m.id === id);
+      if (!entry) throw new Error("模型配置不存在");
+      return {
+        activeId: settings.activeIdOf(store, settings.loadModels(store)),
+        notice: (applyLlmConfig(entry.apiKey || null, entry), undefined),
+      };
+    }),
   );
 
   // ---------- Remote memory service connection test (settings modal) ----------

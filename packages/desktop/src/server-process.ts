@@ -22,13 +22,14 @@ import path from 'node:path';
 
 import { log } from './log';
 
-/** LLM settings passed through to the child (server owns the extraction pipeline). */
+/** Chat-LLM settings passed through to the child (server owns the extraction
+ *  pipeline). All fields optional in effect: embeddings run on the bundled local
+ *  model regardless, and an empty apiKey just disables journal backfill. */
 export interface ChildLlmSettings {
   provider: 'minimax' | 'openai';
   baseUrl: string;
   apiKey: string;
   model: string;
-  embedModel: string;
 }
 
 export interface ServerProcess {
@@ -123,13 +124,24 @@ export async function ensureServerProcess(opts: {
     KNOT_LLM_BASE_URL: opts.llm.baseUrl,
     KNOT_LLM_API_KEY: opts.llm.apiKey,
     KNOT_LLM_MODEL: opts.llm.model,
-    KNOT_LLM_EMBED_MODEL: opts.llm.embedModel,
   };
   const nm = unpackedNodeModules();
   if (nm) env.NODE_PATH = nm;
+  // Child stdout/stderr → userData/server.log (append). With 'inherit' the
+  // child's pino logs — including its own last words before an unexpected
+  // exit ("收到 SIGTERM…", a native crash trace) — only reached the dev
+  // terminal and were lost post-hoc; the file keeps them for diagnosis.
+  const serverLogFd = fs.openSync(path.join(opts.userDataDir, 'server.log'), 'a');
   const c = spawn(process.execPath, [entry], {
     env,
-    stdio: ['ignore', 'inherit', 'inherit'],
+    stdio: ['ignore', serverLogFd, serverLogFd],
+  });
+  c.on('exit', () => {
+    try {
+      fs.closeSync(serverLogFd);
+    } catch {
+      // already closed
+    }
   });
   child = c;
   currentPort = port;

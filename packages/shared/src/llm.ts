@@ -6,32 +6,23 @@
 
 import type { LlmConfig, LlmProvider } from './types';
 
-/** Provider defaults — consumed by the desktop settings UI and the server's env
- *  config alike. */
-export const PROVIDER_DEFAULTS: Record<LlmProvider, { baseUrl: string; model: string; embedModel: string }> = {
-  minimax: { baseUrl: 'https://api.minimax.cn/v1', model: 'MiniMax-M2.7', embedModel: 'embo-01' },
-  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini', embedModel: 'text-embedding-3-small' },
+/** The bundled local embedding model — served by the server process's local
+ *  embedder (ONNX q8, ~24MB, packed into the installer; no network at runtime).
+ *  bge-small-zh-v1.5: Chinese-focused but trained on zh-en pairs, so mixed
+ *  memory content (中文 + code terms) works; C-MTEB beats e5-small at 1/5 the size. */
+export const LOCAL_EMBED_MODEL = 'bge-small-zh-v1.5';
+
+/** Chat-LLM provider defaults — consumed by the desktop settings UI and the
+ *  server's env config alike. Embeddings have no provider defaults: they always
+ *  run locally. */
+export const PROVIDER_DEFAULTS: Record<LlmProvider, { baseUrl: string; model: string }> = {
+  minimax: { baseUrl: 'https://api.minimax.cn/v1', model: 'MiniMax-M2.7' },
+  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini' },
 };
 
-/** Native embedding dimensions of known models; the vector store is created with this
- *  dimension, so switching to a model with different dims invalidates all vectors.
- *  Unknown models fall back to 1536 (the most common). */
-const EMBED_DIMS: Record<string, number> = {
-  'embo-01': 1536,
-  'text-embedding-3-small': 1536,
-  'text-embedding-3-large': 3072,
-  'bge-m3': 1024,
-  'qwen3-embedding-0.6b': 1024,
-};
-
-export function embedDimsOf(embedModel: string): number {
-  const name = embedModel.trim().toLowerCase();
-  // Registry models carry an org prefix (BAAI/bge-m3) — match the full name first,
-  // then the bare model name.
-  return EMBED_DIMS[name] ?? EMBED_DIMS[name.split('/').pop() ?? ''] ?? 1536;
-}
-
-/** Identity of the embedding space: any change invalidates every stored vector. */
+/** Identity of the embedding space. Embeddings always come from the bundled local
+ *  model, so this is constant for a given app build — it only changes (and
+ *  invalidates stored vectors) when the bundled model itself is upgraded. */
 export function embedSignatureOf(llm: LlmConfig): string {
-  return `${llm.provider}/${llm.embedModel.trim().toLowerCase()}`;
+  return `local/${llm.embedModel.trim().toLowerCase()}`;
 }

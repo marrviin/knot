@@ -9,7 +9,6 @@ import type * as store from './store';
 import { PROVIDER_DEFAULTS, type LlmProvider } from '@knot/shared';
 
 // Shared contracts — re-exported so callers (and tests) keep importing them here.
-export { embedDimsOf } from '@knot/shared';
 export type { LlmProvider };
 
 /** API protocol family. 'minimax' → MiniMax-native LLM + shim-translated embo-01
@@ -27,8 +26,6 @@ export interface LlmSettings {
   baseUrl: string;
   model: string;
   apiKey: string;
-  /** Embedding model name — per provider family (embo-01 / text-embedding-3-small / …) */
-  embedModel: string;
   /** Service mode (see MemoryMode). In remote mode the LLM block is ignored —
    *  keys live on the service; only the URL + token matter here. */
   mode: MemoryMode;
@@ -40,7 +37,6 @@ export interface LlmSettingsView {
   provider: LlmProvider;
   baseUrl: string;
   model: string;
-  embedModel: string;
   hasApiKey: boolean;
   mode: MemoryMode;
   remoteUrl: string;
@@ -68,24 +64,18 @@ export function load(s: typeof store): LlmSettings {
     baseUrl: storedBase || d.baseUrl,
     model: s.getSetting('llm_model') || d.model,
     apiKey: s.getSetting('llm_api_key') || '',
-    embedModel: s.getSetting('llm_embed_model') || d.embedModel,
     mode: s.getSetting('llm_mode') === 'remote' ? 'remote' : 'local',
     remoteUrl: s.getSetting('llm_remote_url') || '',
     remoteToken: s.getSetting('llm_remote_token') || '',
   };
 }
 
-/** Per-mode: local needs the full model-service block (embedding calls run on the
- *  spawned child); remote only needs a service address — keys are configured server-side. */
+/** Per-mode: local embeddings always work (the bundled model needs nothing — the
+ *  chat key only enables journal backfill); remote mode needs a service address
+ *  (keys are configured server-side). */
 export function isConfigured(s: LlmSettings): boolean {
   if (s.mode === 'remote') return !!s.remoteUrl.trim();
-  return !!(s.baseUrl && s.apiKey && s.model && s.embedModel);
-}
-
-/** Identity of the embedding space: any change here invalidates stored vectors
- *  (different model = different space even at the same dimensionality). */
-export function embedSignature(s: LlmSettings): string {
-  return `${s.provider}/${s.embedModel.trim().toLowerCase()}`;
+  return true;
 }
 
 export function view(s: LlmSettings): LlmSettingsView {
@@ -93,7 +83,6 @@ export function view(s: LlmSettings): LlmSettingsView {
     provider: s.provider,
     baseUrl: s.baseUrl,
     model: s.model,
-    embedModel: s.embedModel,
     hasApiKey: !!s.apiKey,
     mode: s.mode,
     remoteUrl: s.remoteUrl,
@@ -107,7 +96,6 @@ export function save(
   apiKey: string | null,
   model: string,
   provider: LlmProvider,
-  embedModel?: string,
   mode?: MemoryMode,
   remoteUrl?: string,
   remoteToken?: string | null,
@@ -116,7 +104,6 @@ export function save(
   s.setSetting('llm_provider', provider);
   s.setSetting('llm_base_url', baseUrl.trim() || d.baseUrl);
   s.setSetting('llm_model', model.trim() || d.model);
-  s.setSetting('llm_embed_model', (embedModel ?? '').trim() || d.embedModel);
   s.setSetting('llm_mode', mode === 'remote' ? 'remote' : 'local');
   s.setSetting('llm_remote_url', (remoteUrl ?? '').trim());
   // remoteToken: undefined = keep the stored token (field untouched);
@@ -136,6 +123,98 @@ export function save(
   } else {
     s.deleteSetting('llm_api_key');
   }
+}
+
+// ---------- Saved model library (multiple configs, one active) ----------
+
+/** One saved model-service config in the renderer's model library. The entry that
+ *  matches the active llm_* scalars (see activeIdOf) is the one in use. */
+export interface LlmModelEntry {
+  id: string;
+  provider: LlmProvider;
+  baseUrl: string;
+  model: string;
+  /** Stored locally only; the renderer only ever sees hasApiKey. */
+  apiKey: string;
+}
+
+const MODELS_KEY = 'llm_models';
+
+/** Load the saved-model library. One-time migration: an existing install's active
+ *  scalar config is seeded as the first entry, so the library starts non-empty. */
+export function loadModels(s: typeof store): LlmModelEntry[] {
+  const raw = s.getSetting(MODELS_KEY);
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((m) => m && typeof m.baseUrl === 'string' && typeof m.model === 'string')
+          .map((m) => ({
+            id: typeof m.id === 'string' && m.id ? m.id : `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            provider: m.provider === 'minimax' ? 'minimax' : 'openai',
+            baseUrl: m.baseUrl,
+            model: m.model,
+            apiKey: typeof m.apiKey === 'string' ? m.apiKey : '',
+          }));
+      }
+    } catch {
+      if (raw) s.setSetting(`${MODELS_KEY}_corrupt_backup`, raw);
+    }
+  }
+  // Seed from the active scalar config (legacy installs / first run after this feature).
+  const cur = load(s);
+  if (cur.baseUrl && cur.apiKey && cur.model) {
+    const seeded: LlmModelEntry = {
+      id: 'model-seeded-active',
+      provider: cur.provider,
+      baseUrl: cur.baseUrl,
+      model: cur.model,
+      apiKey: cur.apiKey,
+    };
+    s.setSetting(MODELS_KEY, JSON.stringify([seeded]));
+    return [seeded];
+  }
+  return [];
+}
+
+function persistModels(s: typeof store, models: LlmModelEntry[]): void {
+  s.setSetting(MODELS_KEY, JSON.stringify(models));
+}
+
+/** Upsert an entry (assigns an id when blank). Returns the stored entry. */
+export function saveModel(s: typeof store, entry: Partial<LlmModelEntry>): LlmModelEntry {
+  const models = loadModels(s);
+  const id = entry.id || `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const prev = models.find((m) => m.id === id);
+  const next: LlmModelEntry = {
+    id,
+    provider: entry.provider ?? prev?.provider ?? 'openai',
+    baseUrl: (entry.baseUrl ?? prev?.baseUrl ?? '').trim(),
+    model: (entry.model ?? prev?.model ?? '').trim(),
+    // apiKey undefined = keep the stored key (field untouched); '' = clear; non-empty = replace.
+    apiKey: entry.apiKey === undefined ? (prev?.apiKey ?? '') : entry.apiKey.trim(),
+  };
+  persistModels(s, prev ? models.map((m) => (m.id === id ? next : m)) : [...models, next]);
+  return next;
+}
+
+export function deleteModel(s: typeof store, id: string): void {
+  persistModels(s, loadModels(s).filter((m) => m.id !== id));
+}
+
+/** The library entry currently in use: field-matches the active llm_* scalars.
+ *  Field matching (instead of a stored active-id) keeps the scalars the single
+ *  source of truth — edits via the old save path can't desync the flag. */
+export function activeIdOf(s: typeof store, models: LlmModelEntry[]): string | null {
+  const cur = load(s);
+  const m = models.find(
+    (x) =>
+      x.provider === cur.provider &&
+      x.baseUrl === cur.baseUrl &&
+      x.model === cur.model,
+  );
+  return m?.id ?? null;
 }
 
 // ---------- Memory watch rules ----------
