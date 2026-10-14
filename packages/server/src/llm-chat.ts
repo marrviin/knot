@@ -1,9 +1,9 @@
 //! Minimal OpenAI-compatible chat completion client (fetch-based). Every
 //! configured service (OpenAI, MiniMax, DeepSeek, …) speaks the standard
-//! /chat/completions protocol; this serves Knot's own generation features
+//! /chat/completions protocol; this serves Journal's own generation features
 //! (journal writer) — mem0 keeps its own LLM instance for extraction.
 
-import { withTimeout } from '@knot/shared';
+import { withTimeout } from '@journal/shared';
 
 import type { LlmConfig } from './config';
 

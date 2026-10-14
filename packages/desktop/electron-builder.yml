@@ -1,5 +1,5 @@
-appId: dev.marrviin.knot
-productName: Knot
+appId: dev.marrviin.journal
+productName: Journal
 
 directories:
   # 图标等构建资源（build/icon.icns）
@@ -8,7 +8,7 @@ directories:
 
 # package.json + 生产依赖 node_modules 会被 electron-builder 自动打入，
 # 这里只需补充构建产物（main 指向 dist-electron/main.cjs，渲染层在 dist/，
-# 由 @knot/web 构建直出）+ build/（tray/Dock 图标走 app.getAppPath()/build/…）
+# 由 @journal/web 构建直出）+ build/（tray/Dock 图标走 app.getAppPath()/build/…）
 # + dist-server/（记忆服务 bundle，server-process.ts 打包态从 resourcesPath 读取）
 files:
   - dist/**/*

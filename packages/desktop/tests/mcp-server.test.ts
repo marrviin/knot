@@ -17,14 +17,14 @@ vi.mock('../src/mem0', async (importOriginal) => ({
 
 import * as store from '../src/store';
 import * as mem0 from '../src/mem0';
-import { fetchKnots, handleToolCall, handleJsonRpc, hybridSearch, setMcpContext, startMcpHttpServer } from '../src/mcp-server';
+import { fetchJournals, handleToolCall, handleJsonRpc, hybridSearch, setMcpContext, startMcpHttpServer } from '../src/mcp-server';
 
 const isReadyMock = vi.mocked(mem0.isReady);
 const semanticSearchMock = vi.mocked(mem0.semanticSearch);
 
 const PROJ = '/work/demo';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'knot-mcp-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'journal-mcp-test-'));
 store.open(tmp);
 
 function seed(): void {
@@ -46,54 +46,54 @@ beforeEach(() => {
   semanticSearchMock.mockReset();
 });
 
-describe('fetchKnots project resolution', () => {
+describe('fetchJournals project resolution', () => {
   it('unregistered cwd (default) returns a pointer to list_projects instead of a silent "no memories"', async () => {
-    const text = await fetchKnots({}); // cwd = this repo's dir, never a registered project in the tmp db
+    const text = await fetchJournals({}); // cwd = this repo's dir, never a registered project in the tmp db
     expect(text).toContain('未能定位');
     expect(text).toContain('list_projects');
   });
 
   it('resolves by project name', async () => {
-    expect(await fetchKnots({ project_id: 'demo' })).toContain(PROJ);
+    expect(await fetchJournals({ project_id: 'demo' })).toContain(PROJ);
   });
 
   it('resolves a subdirectory of a registered project by path prefix', async () => {
-    expect(await fetchKnots({ project_id: `${PROJ}/packages/app` })).toContain(PROJ);
+    expect(await fetchJournals({ project_id: `${PROJ}/packages/app` })).toContain(PROJ);
   });
 });
 
-describe('fetchKnots retrieval honesty', () => {
+describe('fetchJournals retrieval honesty', () => {
   it('no query returns the most recent memories with an explicit "最近沉淀" label', async () => {
-    const text = await fetchKnots({ project_id: PROJ });
+    const text = await fetchJournals({ project_id: PROJ });
     expect(text).toContain('最近沉淀的共享记忆');
     expect(text).toContain('pnpm 管理依赖');
   });
 
   it('query hit returns the matches', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm build' });
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm build' });
     expect(text).toContain('构建命令');
   });
 
   it('query with zero hits returns an honest empty result — no recent-30 fallback', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('无命中');
     expect(text).not.toContain('pnpm 管理依赖');
   });
 
   it('a single CJK character is a valid keyword', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: '构' });
+    const text = await fetchJournals({ project_id: PROJ, query: '构' });
     expect(text).toContain('构建命令');
   });
 });
 
-describe('fetchKnots semantic fallback', () => {
+describe('fetchJournals semantic fallback', () => {
   it('keyword miss falls back to mem0 semantic search and labels the results as such', async () => {
     isReadyMock.mockReturnValue(true);
     setMcpContext(tmp);
     semanticSearchMock.mockResolvedValue([
       { id: 'm1', memory: '语义命中的记忆内容', score: 0.71 },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('语义检索');
     expect(text).toContain('语义命中的记忆内容');
     expect(text).toContain('0.71');
@@ -103,7 +103,7 @@ describe('fetchKnots semantic fallback', () => {
   it('keyword miss with mem0 unready keeps the honest empty result', async () => {
     isReadyMock.mockReturnValue(false);
     setMcpContext(tmp);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('无命中');
     expect(semanticSearchMock).not.toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe('fetchKnots semantic fallback', () => {
     isReadyMock.mockReturnValue(true);
     setMcpContext(tmp);
     semanticSearchMock.mockResolvedValue([]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('无命中');
   });
 
@@ -123,7 +123,7 @@ describe('fetchKnots semantic fallback', () => {
       { id: 'f2', memory: '构建命令是 pnpm build', score: 0.8 }, // also a BM25 hit → 双命中
       { id: 'm9', memory: '语义独享的记忆', score: 0.42 },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm build' });
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm build' });
     expect(text).toContain('混合检索');
     expect(text).toContain('语义检索');
     expect(text).toMatch(/\[关键词 \d+\.\d \+ 语义 0\.80\] 构建命令是 pnpm build/);
@@ -137,7 +137,7 @@ describe('fetchKnots semantic fallback', () => {
     semanticSearchMock.mockResolvedValue([
       { id: 'm2', memory: '碰巧沾边的低分记忆', score: 0.31 },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('无命中');
     expect(text).not.toContain('碰巧沾边的低分记忆');
   });
@@ -149,7 +149,7 @@ describe('fetchKnots semantic fallback', () => {
       { id: 'x1', memory: '重复的记忆内容', score: 0.7 },
       { id: 'x2', memory: '重复的记忆内容', score: 0.65 },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text.split('重复的记忆内容').length - 1).toBe(1);
   });
 
@@ -160,53 +160,53 @@ describe('fetchKnots semantic fallback', () => {
       { id: 'w1', memory: '同域但弱相关的记忆', score: 0.5 },
       { id: 'w2', memory: '更弱的记忆', score: 0.35 },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' });
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' });
     expect(text).toContain('语义 0.50');
     expect(text).toContain('同域但弱相关的记忆');
     expect(text).not.toContain('更弱的记忆'); // below the 0.4 floor
   });
 
-  it('hybridSearch and fetchKnots agree — one engine, no consumer-specific gates', async () => {
+  it('hybridSearch and fetchJournals agree — one engine, no consumer-specific gates', async () => {
     isReadyMock.mockReturnValue(true);
     setMcpContext(tmp);
     semanticSearchMock.mockResolvedValue([{ id: 'w4', memory: '弱语义记忆', score: 0.45 }]);
     const hits = await hybridSearch(PROJ, 'pnpm build');
     expect(hits.some((h) => h.semanticScore != null)).toBe(true);
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm build' });
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm build' });
     expect(text).toContain('弱语义记忆');
   });
 });
 
-describe('fetchKnots others-first mode (caller identity)', () => {
+describe('fetchJournals others-first mode (caller identity)', () => {
   it('default mode excludes the caller agent\'s own facts and explains the honest empty', async () => {
     // Both seeded facts are claude-code's — others-first returns an honest empty,
     // not the caller's own memories and not a generic "no memories" message.
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm' }, 'claude-code');
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm' }, 'claude-code');
     expect(text).toContain('其他 agent');
     expect(text).toContain('mode:"all"');
     expect(text).not.toContain('pnpm 管理依赖');
   });
 
   it('mode:"all" returns everything including the caller\'s own', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm', mode: 'all' }, 'claude-code');
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm', mode: 'all' }, 'claude-code');
     expect(text).toContain('构建命令');
   });
 
   it('mode:"self" returns only the caller\'s own facts', async () => {
     store.upsertFact({ id: 'f3', projectId: PROJ, content: 'joycode 侧沉淀的踩坑记忆', agent: 'joycode', type: 'local-memory', source: '' });
     store.upsertFact({ id: 'f4', projectId: PROJ, content: 'claude-code 侧沉淀的决策记忆', agent: 'claude-code', type: 'local-memory', source: '' });
-    const text = await fetchKnots({ project_id: PROJ, query: '沉淀', mode: 'self' }, 'claude-code');
+    const text = await fetchJournals({ project_id: PROJ, query: '沉淀', mode: 'self' }, 'claude-code');
     expect(text).toContain('claude-code 侧沉淀的决策记忆');
     expect(text).not.toContain('joycode 侧沉淀的踩坑记忆');
   });
 
   it('unknown caller in others mode degrades to the pre-mode behavior (return everything)', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm build' });
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm build' });
     expect(text).toContain('构建命令');
   });
 
   it('fetch-latest (no query) also applies the others filter with the own-count note', async () => {
-    const text = await fetchKnots({ project_id: PROJ }, 'claude-code');
+    const text = await fetchJournals({ project_id: PROJ }, 'claude-code');
     expect(text).toContain('其他 agent');
     expect(text).toContain('你自己的 2 条');
     expect(text).not.toContain('pnpm 管理依赖');
@@ -219,7 +219,7 @@ describe('fetchKnots others-first mode (caller identity)', () => {
       { id: 'f2', memory: '构建命令是 pnpm build', score: 0.8, agent: 'claude-code' },
       { id: 'm1', memory: '语义命中的记忆内容', score: 0.71, agent: 'joycode' },
     ]);
-    const text = await fetchKnots({ project_id: PROJ, query: '完全无关的词' }, 'claude-code');
+    const text = await fetchJournals({ project_id: PROJ, query: '完全无关的词' }, 'claude-code');
     expect(text).not.toContain('构建命令');
     expect(text).toContain('语义命中的记忆内容');
     // Filtering shrinks the pool, so the vector store is asked for extra candidates.
@@ -227,7 +227,7 @@ describe('fetchKnots others-first mode (caller identity)', () => {
   });
 
   it('the tool argument is the identity fallback when no caller agent is known', async () => {
-    const text = await fetchKnots({ project_id: PROJ, query: 'pnpm', agent: 'claude-code' });
+    const text = await fetchJournals({ project_id: PROJ, query: 'pnpm', agent: 'claude-code' });
     expect(text).toContain('其他 agent');
     expect(text).not.toContain('pnpm 管理依赖');
   });
@@ -287,7 +287,7 @@ describe('handleJsonRpc initialize', () => {
     });
     const init = r.result as { protocolVersion: string; serverInfo: { name: string }; instructions: string };
     expect(init.protocolVersion).toBe('2025-06-18');
-    expect(init.serverInfo.name).toBe('knot');
+    expect(init.serverInfo.name).toBe('journal');
     expect(init.instructions).toContain('recall_memories');
   });
 });
@@ -305,7 +305,7 @@ describe('HTTP MCP server', () => {
         });
 
       const init = await (await post({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } })).json() as any;
-      expect(init.result.serverInfo.name).toBe('knot');
+      expect(init.result.serverInfo.name).toBe('journal');
       // Echo the client's requested protocol version so negotiation succeeds.
       expect(init.result.protocolVersion).toBe('2025-06-18');
 

@@ -1,6 +1,6 @@
 //! MCP server: serves each project's shared memories (keyword search over the
 //! facts mirror store) via JSON-RPC 2.0.
-//! - stdio mode (`knot --mcp-server`): headless fallback spawned manually, line-delimited JSON-RPC over stdin/stdout.
+//! - stdio mode (`journal --mcp-server`): headless fallback spawned manually, line-delimited JSON-RPC over stdin/stdout.
 //! - HTTP mode (default GUI): the running app hosts `http://127.0.0.1:<port>/mcp`
 //!   (stateless Streamable-HTTP-style: one JSON response per POST, no session id),
 //!   so Claude Code connects via a static `{"type":"http"}` entry instead of
@@ -15,7 +15,7 @@ import * as mem0 from './mem0';
 
 /** Default loopback port for the HTTP MCP endpoint. The injected Claude Code
  *  config hardcodes this URL, so a conflict must not silently shift ports. */
-export const KNOT_MCP_PORT = 27183;
+export const JOURNAL_MCP_PORT = 27183;
 
 export interface McpHttpHandle {
   server: http.Server;
@@ -25,7 +25,7 @@ export interface McpHttpHandle {
 }
 
 /** Start the loopback HTTP MCP server. Resolves even when the port is taken
- *  (another Knot instance is presumed to be serving there) — `handle` is then
+ *  (another Journal instance is presumed to be serving there) — `handle` is then
  *  null, which callers surface via log instead of failing the GUI startup. */
 /** Caller identity embedded in the URL path (`/mcp/<agent>`): the HTTP endpoint is
  *  stateless (one JSON response per POST, no session), so per-connection clientInfo
@@ -68,10 +68,10 @@ export function startMcpHttpServer(port = mcpPort()): Promise<McpHttpHandle | nu
   return new Promise((resolve) => {
     server.once('error', (e: NodeJS.ErrnoException) => {
       if (e.code === 'EADDRINUSE') {
-        console.error(`[Knot] MCP 端口 ${port} 已被占用(可能是另一个 Knot 实例正在服务),本次不重复启动`);
+        console.error(`[Journal] MCP 端口 ${port} 已被占用(可能是另一个 Journal 实例正在服务),本次不重复启动`);
         resolve(null);
       } else {
-        console.error('[Knot] MCP HTTP 服务启动失败:', e);
+        console.error('[Journal] MCP HTTP 服务启动失败:', e);
         resolve(null);
       }
     });
@@ -88,8 +88,8 @@ export function startMcpHttpServer(port = mcpPort()): Promise<McpHttpHandle | nu
 }
 
 export function mcpPort(): number {
-  const env = Number(process.env.KNOT_MCP_PORT);
-  return Number.isInteger(env) && env > 0 ? env : KNOT_MCP_PORT;
+  const env = Number(process.env.JOURNAL_MCP_PORT);
+  return Number.isInteger(env) && env > 0 ? env : JOURNAL_MCP_PORT;
 }
 
 export function runMcpServer(): void {
@@ -114,9 +114,9 @@ export function runMcpServer(): void {
     if (typeof msg.method === 'string' && msg.method.startsWith('notifications/')) return; // notifications need no reply
 
     queue = queue.then(async () => {
-      // stdio mode: one agent per spawned process — KNOT_AGENT is its identity
+      // stdio mode: one agent per spawned process — JOURNAL_AGENT is its identity
       // (set by whoever configures the headless spawn; unset = unknown caller).
-      write({ jsonrpc: '2.0', id: msg.id ?? null, ...(await handleJsonRpc(msg, process.env.KNOT_AGENT || undefined)) });
+      write({ jsonrpc: '2.0', id: msg.id ?? null, ...(await handleJsonRpc(msg, process.env.JOURNAL_AGENT || undefined)) });
     });
   });
 
@@ -148,9 +148,9 @@ export async function handleJsonRpc(
           protocolVersion:
             typeof msg.params?.protocolVersion === 'string' ? msg.params.protocolVersion : '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'knot', version: app.getVersion() },
+          serverInfo: { name: 'journal', version: app.getVersion() },
           instructions:
-            'Knot is the cross-session shared memory for this project: previous agents distilled facts ' +
+            'Journal is the cross-session shared memory for this project: previous agents distilled facts ' +
             '(decisions, pitfalls, conventions, env quirks) that future tasks must not rediscover the hard way. ' +
             'RULE: at the start of ANY task — before planning or writing code — call recall_memories first. ' +
             'Pass query for targeted recall (keywords or a natural-language question); omit query to fetch the latest memories. ' +
@@ -184,7 +184,7 @@ function toolsManifest() {
       {
         name: 'recall_memories',
         description:
-          'Recall shared memories that previous agents left for this project (Knot facts: ' +
+          'Recall shared memories that previous agents left for this project (Journal facts: ' +
           'decisions, pitfalls, conventions, environment quirks). USE WHEN starting any task in the ' +
           'project — call this BEFORE planning or implementing, so you build on what is already known ' +
           'instead of rediscovering it. Also USE WHEN the task touches an area that was likely worked ' +
@@ -215,7 +215,7 @@ function toolsManifest() {
             agent: {
               type: 'string',
               description:
-                'Optional: your agent id (e.g. "claude-code", "codex", "joycode"). Only needed when the server cannot identify you (plain /mcp URL or stdio without KNOT_AGENT); with it, the default "others" mode can exclude your own memories.',
+                'Optional: your agent id (e.g. "claude-code", "codex", "joycode"). Only needed when the server cannot identify you (plain /mcp URL or stdio without JOURNAL_AGENT); with it, the default "others" mode can exclude your own memories.',
             },
           },
         },
@@ -223,7 +223,7 @@ function toolsManifest() {
       {
         name: 'list_projects',
         description:
-          'List all projects registered in Knot with their memory counts. Call this when ' +
+          'List all projects registered in Journal with their memory counts. Call this when ' +
           'recall_memories cannot resolve the current project, to find the right project_id.',
         inputSchema: { type: 'object', properties: {} },
       },
@@ -243,7 +243,7 @@ export async function handleToolCall(msg: any, callerAgent?: string) {
   let text: string;
   switch (name) {
     case 'recall_memories':
-      text = await fetchKnots(args, callerAgent);
+      text = await fetchJournals(args, callerAgent);
       break;
     case 'list_projects':
       text = listProjectsText();
@@ -328,7 +328,7 @@ export async function hybridSearch(
           return true;
         });
     } catch (e) {
-      console.error('[Knot MCP] 语义检索回落失败:', e);
+      console.error('[Journal MCP] 语义检索回落失败:', e);
     }
   }
   // search() isn't documented as score-sorted; RRF ranks below need it.
@@ -396,7 +396,7 @@ function agentPasses(hitAgent: string | undefined, filter?: store.AgentFilter): 
   return true;
 }
 
-export async function fetchKnots(args: any, callerAgent?: string): Promise<string> {
+export async function fetchJournals(args: any, callerAgent?: string): Promise<string> {
   const requested: string = args.project_id ?? currentProjectId();
   const query: string | undefined = typeof args.query === 'string' && args.query.trim() ? args.query.trim() : undefined;
 
@@ -419,8 +419,8 @@ export async function fetchKnots(args: any, callerAgent?: string): Promise<strin
 
   const resolved = store.resolveProject(requested);
   if (!resolved) {
-    return `【Knot 中央共享脑提示】未能定位与「${requested}」对应的项目（按绝对路径或项目名匹配）。` +
-      `请调用 list_projects 查看已登记项目；若当前项目未登记，需先在 Knot 中接管该项目目录。`;
+    return `【Journal 中央共享脑提示】未能定位与「${requested}」对应的项目（按绝对路径或项目名匹配）。` +
+      `请调用 list_projects 查看已登记项目；若当前项目未登记，需先在 Journal 中接管该项目目录。`;
   }
 
   if (!query) {
@@ -429,30 +429,30 @@ export async function fetchKnots(args: any, callerAgent?: string): Promise<strin
     if (latest.length === 0) {
       if (mode === 'others' && selfAgent) {
         const own = store.factCountByAgent(resolved, selfAgent);
-        return `【Knot 中央共享脑提示】项目「${resolved}」暂无其他 agent 沉淀的共享记忆` +
+        return `【Journal 中央共享脑提示】项目「${resolved}」暂无其他 agent 沉淀的共享记忆` +
           (own > 0 ? `（你自己的 ${own} 条未计入；需要时传 mode:"all" 查看全部）。` : '。');
       }
-      return `【Knot 中央共享脑提示】项目「${resolved}」暂无共享记忆沉淀。`;
+      return `【Journal 中央共享脑提示】项目「${resolved}」暂无共享记忆沉淀。`;
     }
     const body = latest.map((f) => `- ${f.content}`).join('\n');
-    return `【Knot 中央共享脑提示】项目「${resolved}」最近沉淀的共享记忆如下：\n${body}`;
+    return `【Journal 中央共享脑提示】项目「${resolved}」最近沉淀的共享记忆如下：\n${body}`;
   }
 
   let hits: HybridHit[];
   try {
     hits = await hybridSearch(resolved, query, agentFilter);
   } catch (e) {
-    return `【Knot 中央共享脑提示】检索失败: ${e}`;
+    return `【Journal 中央共享脑提示】检索失败: ${e}`;
   }
   if (hits.length === 0) {
     if (mode === 'others' && selfAgent) {
       const own = store.factCountByAgent(resolved, selfAgent);
-      return `【Knot 中央共享脑提示】项目「${resolved}」中检索「${query}」在其他 agent 的记忆中无命中` +
+      return `【Journal 中央共享脑提示】项目「${resolved}」中检索「${query}」在其他 agent 的记忆中无命中` +
         (own > 0
           ? `（你自己的 ${own} 条记忆未计入检索；可传 mode:"all" 一并检索，或换用其他关键词重试）。`
           : `。可换用其他关键词重试，或调用 list_projects 确认项目。`);
     }
-    return `【Knot 中央共享脑提示】项目「${resolved}」中检索「${query}」无命中。可换用其他关键词重试，` +
+    return `【Journal 中央共享脑提示】项目「${resolved}」中检索「${query}」无命中。可换用其他关键词重试，` +
       `或调用 list_projects 确认项目。`;
   }
 
@@ -472,18 +472,18 @@ export async function fetchKnots(args: any, callerAgent?: string): Promise<strin
     })
     .join('\n');
   if (!semanticUsed) {
-    return `【Knot 中央共享脑提示】项目「${resolved}」检索到的历史接力资产如下：\n${body}`;
+    return `【Journal 中央共享脑提示】项目「${resolved}」检索到的历史接力资产如下：\n${body}`;
   }
-  return `【Knot 中央共享脑提示】项目「${resolved}」中检索「${query}」的混合检索结果（关键词 + 语义检索向量召回，RRF 融合）如下：\n${body}`;
+  return `【Journal 中央共享脑提示】项目「${resolved}」中检索「${query}」的混合检索结果（关键词 + 语义检索向量召回，RRF 融合）如下：\n${body}`;
 }
 
 function listProjectsText(): string {
   const projects = store.listProjects();
   if (projects.length === 0) {
-    return '【Knot 中央共享脑提示】暂无已登记项目。';
+    return '【Journal 中央共享脑提示】暂无已登记项目。';
   }
   const body = projects
     .map((p) => `- ${p.name}（${p.factCount} 条记忆）: ${p.path}`)
     .join('\n');
-  return `【Knot 中央共享脑提示】已登记项目：\n${body}`;
+  return `【Journal 中央共享脑提示】已登记项目：\n${body}`;
 }

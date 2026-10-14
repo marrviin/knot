@@ -27,7 +27,7 @@ export default defineConfig({
   // Assets must use relative paths — the packaged Electron app loads them via file://
   base: './',
 
-  // Build straight into @knot/desktop/dist: production Electron loads ../dist/index.html
+  // Build straight into @journal/desktop/dist: production Electron loads ../dist/index.html
   // (main.ts) and electron-builder packs files: dist/** relative to the desktop package.
   build: {
     outDir: '../desktop/dist',

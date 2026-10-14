@@ -4,7 +4,7 @@
 //! those checks keep the Chinese error strings the desktop client surfaces.
 
 import { Type } from '@sinclair/typebox';
-import { SBTI_TYPES } from '@knot/shared';
+import { SBTI_TYPES } from '@journal/shared';
 
 /** POST /ingest */
 export const IngestBody = Type.Object({
@@ -122,7 +122,7 @@ export const ProjectInfoSchema = Type.Object({
 
 export const ProjectsResponse = Type.Object({ projects: Type.Array(ProjectInfoSchema) });
 
-/** GET /projects/:projectId/journals 条目（.knot/logs/YYYY-MM-DD.md，一天一文件） */
+/** GET /projects/:projectId/journals 条目（.journal/logs/YYYY-MM-DD.md，一天一文件） */
 export const JournalSchema = Type.Object({
   date: Type.String(),
   content: Type.String(),

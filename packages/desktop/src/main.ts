@@ -1,9 +1,13 @@
 //! Electron main process entry.
-//! - `knot --mcp-server`: headless stdio MCP server (manual/debug fallback)
+//! - `journal --mcp-server`: headless stdio MCP server (manual/debug fallback)
 //! - Default: GUI main window + file watching + mem0 integration + local HTTP MCP server
 
 import { app, BrowserWindow, Menu, nativeImage, Tray, clipboard } from 'electron';
 import path from 'node:path';
+
+/** App identity drives userData (…/Application Support/<name>) — pin it instead of
+ *  letting dev (@journal/desktop) and packaged (productName) resolve differently. */
+app.setName('Journal');
 
 import * as store from './store';
 import * as mem0 from './mem0';
@@ -26,7 +30,7 @@ if (process.argv.includes('--mcp-server')) {
   });
 } else {
   void startGui().catch((e) => {
-    console.error('[Knot] GUI 启动失败:', e);
+    console.error('[Journal] GUI 启动失败:', e);
   });
 }
 
@@ -34,7 +38,7 @@ if (process.argv.includes('--mcp-server')) {
 let tray: Tray | null = null;
 let appQuitting = false;
 
-/** Loopback HTTP MCP server handle; null when the port was taken by another Knot instance. */
+/** Loopback HTTP MCP server handle; null when the port was taken by another Journal instance. */
 let mcpServer: McpHttpHandle | null = null;
 
 /** Start the local HTTP MCP endpoint the injected Claude Code config points at. */
@@ -54,7 +58,7 @@ async function startGui(): Promise<void> {
   if (process.platform === 'darwin' && app.dock) {
     const icon = nativeImage.createFromPath(path.join(app.getAppPath(), 'build', 'icon.png'));
     if (!icon.isEmpty()) app.dock.setIcon(icon);
-    else console.warn('[Knot] 未找到应用图标 build/icon.png，Dock 使用默认图标');
+    else console.warn('[Journal] 未找到应用图标 build/icon.png，Dock 使用默认图标');
   }
 
   const win = new BrowserWindow({
@@ -62,7 +66,7 @@ async function startGui(): Promise<void> {
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    title: '结绳 Knot',
+    title: 'Journal',
     // macOS: no native title bar row; traffic lights overlay the content's top-left
     // (matching manta-compare's Overlay style). Other platforms keep the default title bar.
     ...(process.platform === 'darwin'
@@ -70,7 +74,7 @@ async function startGui(): Promise<void> {
           titleBarStyle: 'hiddenInset' as const,
           // trafficLightPosition is the top-left corner of the buttons (12px diameter):
           // y=(48-12)/2=18 centers the lights vertically in the 48px sidebar drag strip,
-          // aligned with the Knot title; the light bottom (y=30) leaves 18px above the
+          // aligned with the Journal title; the light bottom (y=30) leaves 18px above the
           // "Add project" menu below (y=48).
           trafficLightPosition: { x: 16, y: 18 },
         }
@@ -106,7 +110,7 @@ async function startGui(): Promise<void> {
   createTray(win);
 
   // Startup-freeze diagnosis: the renderer's console (long-task prints, boot marks)
-  // lands in knot.log, so a frozen phase shows up as a dated longtask entry instead
+  // lands in journal.log, so a frozen phase shows up as a dated longtask entry instead
   // of being invisible. Dev only — a packaged app's console is not worth the noise.
   if (process.env.VITE_DEV_SERVER_URL) {
     const bootT0 = Date.now();
@@ -133,14 +137,13 @@ async function startGui(): Promise<void> {
   // mem0 awaits a telemetry report (posthog) on add/getAll — unreachable network
   // hangs the import loop; disable it entirely.
   process.env.MEM0_TELEMETRY = 'false';
-  migrateLegacySettings();
   watcher.setUserDataDir(userDataDir);
 
   const onFactsChanged = (payload: Record<string, unknown>) => {
-    if (!win.isDestroyed()) win.webContents.send('knot://facts-changed', payload);
+    if (!win.isDestroyed()) win.webContents.send('journal://facts-changed', payload);
   };
   const sendImportProgress = (p: watcher.ImportProgress) => {
-    if (!win.isDestroyed()) win.webContents.send('knot://import-progress', p);
+    if (!win.isDestroyed()) win.webContents.send('journal://import-progress', p);
   };
   watcher.setIngestListener((projectId, report) => {
     onFactsChanged({ path: projectId, ...report });
@@ -201,7 +204,7 @@ function createTray(win: BrowserWindow): void {
   icon.setTemplateImage(true);
 
   tray = new Tray(icon);
-  tray.setToolTip('结绳 Knot');
+  tray.setToolTip('Journal');
 
   const menu = Menu.buildFromTemplate([
     {
@@ -218,7 +221,7 @@ function createTray(win: BrowserWindow): void {
     },
     { type: 'separator' },
     {
-      label: '退出 Knot',
+      label: '退出 Journal',
       click: () => app.quit(),
     },
   ]);
@@ -230,13 +233,4 @@ function createTray(win: BrowserWindow): void {
 function showMainWindow(win: BrowserWindow): void {
   win.show();
   win.focus();
-}
-
-/** Carry over LLM settings from the legacy Tauri app if any (never overwrites existing config in the new store) */
-function migrateLegacySettings(): void {
-  if (store.getSetting('llm_api_key')) return;
-  const legacy = store.readLegacySettings();
-  for (const key of ['llm_base_url', 'llm_model', 'llm_api_key']) {
-    if (legacy[key]) store.setSetting(key, legacy[key]);
-  }
 }

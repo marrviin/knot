@@ -1,4 +1,4 @@
-//! Journal writer: Knot generates a day's lab-log entry with the user's
+//! Journal writer: Journal generates a day's lab-log entry with the user's
 //! configured LLM when a past date has memory activity but no journal file
 //! yet. Checked at server startup and hourly (in local mode the server's
 //! lifetime is the app's); GET /journals/pending reports the same plan without
@@ -9,11 +9,11 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
-import type { FactItem } from '@knot/shared';
+import type { FactItem } from '@journal/shared';
 
 import type { LlmConfig } from '../config';
 import { chatCompletion } from '../llm-chat';
-import { SBTI_TYPES } from '@knot/shared';
+import { SBTI_TYPES } from '@journal/shared';
 import { deleteJournalFilesBefore, journalDates, writeJournalFile } from '../journal-fs';
 import * as store from '../store';
 import { listFacts } from './memory-core';
@@ -28,7 +28,7 @@ const MAX_FACT_CHARS = 600;
  *  multi-day backfill from crawling while staying polite to the endpoint. */
 const JOURNAL_CONCURRENCY = 3;
 
-const SYSTEM_PROMPT = `你是「结绳」的实验日志代笔：根据某项目某天的记忆条目，代写这个项目里 AI 工程师当天的日记（markdown）。
+const SYSTEM_PROMPT = `你是「Journal」的实验日志代笔：根据某项目某天的记忆条目，代写这个项目里 AI 工程师当天的日记（markdown）。
 
 你是这个项目里的 AI 工程师，和一位人类同事长期结对、平等搭档。这是你**自己的工作日记**——下班前随手记的，不是汇报，假设没人看。"我"永远是这位 AI 同事，{PEER}；可以像老搭档一样小声嘀咕（"搭档今天又推翻了自己早上的方案"），不谄媚不刻薄，绝没有"作为一个 AI"的腔调，不提自己是模型或工具。{PERSONA}
 
@@ -99,7 +99,7 @@ export async function planMissingJournals(
     if (row.id === store.GLOBAL_PROJECT || !path.isAbsolute(row.id)) continue;
     if (onlyProjectId && row.id !== onlyProjectId) continue;
     if (!isDirectory(row.id)) {
-      console.log(`[Knot server] journal: 项目根不存在，跳过（远端模式？）${row.id}`);
+      console.log(`[Journal server] journal: 项目根不存在，跳过（远端模式？）${row.id}`);
       continue;
     }
     let facts = await listFacts(cfg, dataDir, row.id);
@@ -160,11 +160,11 @@ export async function generateMissingJournals(
             // 圈注出处的判定语料：当天全部条目原文（去空白）
             const factCorpus = dayFacts.map((f) => f.memory).join('').replace(/\s+/g, '');
             if (writeJournalFile(p.projectId, date, sanitizeJournalMarks(entry, factCorpus))) {
-              console.log(`[Knot server] journal: 已生成 ${p.projectId} ${date}`);
+              console.log(`[Journal server] journal: 已生成 ${p.projectId} ${date}`);
               out.push({ project: p.projectId, date, ok: true });
             }
           } catch (e) {
-            console.error(`[Knot server] journal: 生成失败 ${p.projectId} ${date}:`, e);
+            console.error(`[Journal server] journal: 生成失败 ${p.projectId} ${date}:`, e);
             out.push({ project: p.projectId, date, ok: false, error: String(e) });
           }
         });
@@ -199,7 +199,7 @@ export async function regenerateJournals(
 ): Promise<JournalGenResult[]> {
   const deleted = deleteJournalFilesBefore(projectId, store.localDate(Date.now()));
   console.log(
-    `[Knot server] journal: 重新生成 ${projectId} — 已删除 ${deleted.length} 天（${deleted.join('、') || '无'}）`,
+    `[Journal server] journal: 重新生成 ${projectId} — 已删除 ${deleted.length} 天（${deleted.join('、') || '无'}）`,
   );
   return generateMissingJournals(cfg, dataDir, projectId);
 }
@@ -207,16 +207,16 @@ export async function regenerateJournals(
 /** Startup + hourly check loop. */
 export function startJournalScheduler(cfg: LlmConfig | null, dataDir: string): void {
   if (!cfg?.apiKey) {
-    console.log('[Knot server] journal: chat LLM 未配置（无 API Key），日志自动生成停用');
+    console.log('[Journal server] journal: chat LLM 未配置（无 API Key），日志自动生成停用');
     return;
   }
   const tick = () => {
     void generateMissingJournals(cfg, dataDir)
       .then((r) => {
         const failed = r.filter((x) => !x.ok).length;
-        if (r.length) console.log(`[Knot server] journal: 本轮生成 ${r.length} 篇（失败 ${failed}）`);
+        if (r.length) console.log(`[Journal server] journal: 本轮生成 ${r.length} 篇（失败 ${failed}）`);
       })
-      .catch((e) => console.error('[Knot server] journal: 调度异常:', e));
+      .catch((e) => console.error('[Journal server] journal: 调度异常:', e));
   };
   setTimeout(tick, STARTUP_DELAY_MS).unref();
   setInterval(tick, CHECK_INTERVAL_MS).unref();

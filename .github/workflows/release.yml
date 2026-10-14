@@ -41,7 +41,7 @@ jobs:
       - name: Package & publish release
         # electron-builder 在 packages/desktop 内执行（app 目录 = desktop 包），
         # dist-server bundle 由上面的 build:server 产出、经 extraResources 打进 Resources
-        run: pnpm --filter @knot/desktop exec electron-builder --mac ${{ startsWith(github.ref, 'refs/tags/') && '--publish always' || '--publish never' }}
+        run: pnpm --filter @journal/desktop exec electron-builder --mac ${{ startsWith(github.ref, 'refs/tags/') && '--publish always' || '--publish never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # CI 无签名证书，配合 electron-builder.yml 的 identity: null 走 ad-hoc 签名

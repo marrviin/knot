@@ -5,7 +5,7 @@ import { SettingsWindow } from './settings-window';
 import './styles.css';
 
 // Startup-freeze diagnosis: any main-thread task ≥200ms is reported (main process
-// forwards renderer console into knot.log), so a frozen phase after the window
+// forwards renderer console into journal.log), so a frozen phase after the window
 // becomes visible leaves a dated trace instead of being anecdotal.
 try {
   new PerformanceObserver((list) => {

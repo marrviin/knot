@@ -8,7 +8,7 @@
 //!
 //! Ported behaviors (unchanged from the original):
 //! - LLM: any OpenAI-compatible chat service (standard /chat/completions wire
-//!   format). Optional: Knot's mem0 paths (infer:false add,
+//!   format). Optional: Journal's mem0 paths (infer:false add,
 //!   update, search, delete, getAll) never call it — a placeholder config stands
 //!   in when no API key is set, so the memory layer works with zero configuration.
 //! - Embedding: always the bundled bge-small-zh-v1.5 ONNX model, served by a local
@@ -31,7 +31,7 @@ import {
   type FactItem,
   type IngestReport,
   type SemanticHit,
-} from '@knot/shared';
+} from '@journal/shared';
 
 /** Ingestion behavior tuning: keep the original language, no meta info, correct old memories on conflict */
 const CUSTOM_INSTRUCTIONS =
@@ -66,7 +66,7 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
   const prevSignature = fs.existsSync(sigFile) ? fs.readFileSync(sigFile, 'utf8').trim() : '';
   if (prevSignature && prevSignature !== signature) {
     console.error(
-      `[Knot server] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
+      `[Journal server] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
     );
   }
 
@@ -79,7 +79,7 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
       // Vectors always come from the local /embeddings side-server (bundled model).
       const modelDir = resolveLocalModelDir();
       if (!modelDir) {
-        throw new Error('未找到内置 embedding 模型（models/bge-small-zh-v1.5）— 请重新构建 @knot/server');
+        throw new Error('未找到内置 embedding 模型（models/bge-small-zh-v1.5）— 请重新构建 @journal/server');
       }
       newShim = await startLocalEmbedder(modelDir);
       const embedder: MemoryConfig['embedder'] = {
@@ -92,7 +92,7 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
         },
       };
       // The chat LLM is real only when the user set a key; without one, mem0
-      // still requires an llm block but Knot's paths never invoke it — stand in
+      // still requires an llm block but Journal's paths never invoke it — stand in
       // a dead-port config so any accidental call fails loudly instead of hanging.
       // (OpenAI-compatible wire format everywhere — see the LlmConfig contract.)
       const llm: MemoryConfig['llm'] = cfg.apiKey
@@ -111,7 +111,7 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
         vectorStore: {
           provider: 'memory',
           config: {
-            collectionName: 'knot',
+            collectionName: 'journal',
             dimension: LOCAL_EMBED_DIMS,
             dbPath: path.join(mem0Dir, 'vectors.db'),
           },
@@ -421,7 +421,7 @@ export async function countByAgent(
     const all = await listAll(memory, projectId);
     return all.filter((f) => (f.metadata ?? {}).agent === agent).length;
   } catch (e) {
-    console.error('[Knot server] 迁移检查读取失败:', e);
+    console.error('[Journal server] 迁移检查读取失败:', e);
     return 0;
   }
 }
@@ -451,7 +451,7 @@ export async function listProjects(cfg: LlmConfig | null, dataDir: string): Prom
       try {
         factCount = (await listAll(m, r.id)).length;
       } catch (e) {
-        console.error(`[Knot server] 项目 ${r.id} 记忆统计失败:`, e);
+        console.error(`[Journal server] 项目 ${r.id} 记忆统计失败:`, e);
       }
     }
     out.push({ id: r.id, name: r.name, factCount, lastUpdated: store.lastUpdatedAt(dataDir, r.id) });
@@ -476,7 +476,7 @@ export async function registerProject(
     try {
       factCount = (await listAll(m, projectId.trim())).length;
     } catch (e) {
-      console.error(`[Knot server] 项目 ${projectId} 记忆统计失败:`, e);
+      console.error(`[Journal server] 项目 ${projectId} 记忆统计失败:`, e);
     }
   }
   return {

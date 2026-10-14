@@ -4,7 +4,7 @@
  *  IPC (loopback child process + per-launch bearer token); the future web build
  *  reads a user-configured service URL from localStorage into the same entry.
  *
- *  window.knot stays available for desktop-only capabilities (pick_directory,
+ *  window.journal stays available for desktop-only capabilities (pick_directory,
  *  MCP injection, watch rules, import events). */
 
 import { client } from './client/client.gen';

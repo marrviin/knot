@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { findNearDupIds, withTimeout } from '@knot/shared';
+import { findNearDupIds, withTimeout } from '@journal/shared';
 
 describe('withTimeout', () => {
   it('resolves with the wrapped value when fast enough', async () => {

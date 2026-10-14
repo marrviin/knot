@@ -115,13 +115,13 @@ export async function ensureServerProcess(opts: {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
-    KNOT_HOST: '127.0.0.1',
-    KNOT_PORT: String(port),
-    KNOT_TOKEN: token,
-    KNOT_DATA_DIR: path.join(opts.userDataDir, 'mem0'),
-    KNOT_LLM_BASE_URL: opts.llm.baseUrl,
-    KNOT_LLM_API_KEY: opts.llm.apiKey,
-    KNOT_LLM_MODEL: opts.llm.model,
+    JOURNAL_HOST: '127.0.0.1',
+    JOURNAL_PORT: String(port),
+    JOURNAL_TOKEN: token,
+    JOURNAL_DATA_DIR: path.join(opts.userDataDir, 'mem0'),
+    JOURNAL_LLM_BASE_URL: opts.llm.baseUrl,
+    JOURNAL_LLM_API_KEY: opts.llm.apiKey,
+    JOURNAL_LLM_MODEL: opts.llm.model,
   };
   const nm = unpackedNodeModules();
   if (nm) env.NODE_PATH = nm;

@@ -1,9 +1,9 @@
 {
-  "name": "@knot/shared",
+  "name": "@journal/shared",
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Knot 跨包共享：契约类型 + LLM provider 常量 + 纯工具（零依赖，直接消费 TS 源码）",
+  "description": "Journal 跨包共享：契约类型 + LLM provider 常量 + 纯工具（零依赖，直接消费 TS 源码）",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "devDependencies": {

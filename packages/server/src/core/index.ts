@@ -3,7 +3,7 @@
 //! instance). Route modules reach it through the `core` instance decoration —
 //! nothing outside this directory imports memory-core directly.
 
-import type { FactItem, IngestReport, SemanticHit } from '@knot/shared';
+import type { FactItem, IngestReport, SemanticHit } from '@journal/shared';
 
 import type { ServerConfig } from '../config';
 import * as core from './memory-core';

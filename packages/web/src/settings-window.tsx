@@ -39,7 +39,7 @@ import {
 } from "@ant-design/icons";
 import cx from "classnames";
 import { AgentIcon } from "./agent-icon";
-import { SBTI_TYPES } from "@knot/shared";
+import { SBTI_TYPES } from "@journal/shared";
 import { SBTI_IMAGES } from "./sbti-images";
 import { ThemeProviders } from "./theme";
 import * as api from "./api";
@@ -1157,7 +1157,7 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
           共用同一套 HTTP 客户端，只是地址不同；切换即时保存，失败回滚。 */}
       <SettingRow
         title="记忆存储"
-        desc="记忆数据保存在本机子进程服务，或连接自行部署的远程 Knot 服务；切换即时保存，失败自动回滚"
+        desc="记忆数据保存在本机子进程服务，或连接自行部署的远程 Journal 服务；切换即时保存，失败自动回滚"
         control={
           <Radio.Group
             value={mode}
@@ -1176,7 +1176,7 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
       {mode === "remote" && (
         <>
           <p className="m-0 px-1 text-xs leading-5 text-muted">
-            填写自行部署的 Knot 记忆服务地址（server/ 目录提供
+            填写自行部署的 Journal 记忆服务地址（server/ 目录提供
             Dockerfile）。远程模式下记忆与向量全部存在服务端，
             本机仅保留展示镜像；服务不可达时语义检索与导入会直接报错，不会降级写本地。
           </p>
@@ -1478,12 +1478,12 @@ const CONNECTORS: {
   {
     agent: "codex",
     name: "Codex",
-    desc: "写入 ~/.codex/config.toml 的 [mcp_servers.knot] 配置段，新会话生效",
+    desc: "写入 ~/.codex/config.toml 的 [mcp_servers.journal] 配置段，新会话生效",
   },
   {
     agent: "hermes",
     name: "Hermes",
-    desc: "写入 ~/.hermes/config.yaml 的 mcp_servers.knot 节点，新会话生效",
+    desc: "写入 ~/.hermes/config.yaml 的 mcp_servers.journal 节点，新会话生效",
   },
   {
     agent: "joycode",
@@ -1497,7 +1497,7 @@ const CONNECTORS: {
   },
 ];
 
-/** "Connectors" pane: registers Knot as an MCP server in each agent's user-level config,
+/** "Connectors" pane: registers Journal as an MCP server in each agent's user-level config,
  *  letting agent sessions read the current project's shared memories via MCP tools
  *  (recall_memories / list_projects). One card per connection: status + toggle. */
 function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
@@ -1561,7 +1561,7 @@ function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
   );
 }
 
-const GITHUB_URL = "https://github.com/marrviin/knot";
+const GITHUB_URL = "https://github.com/marrviin/manta-journal";
 const FEEDBACK_URL = `${GITHUB_URL}/issues/new`;
 
 /** "About" pane: app icon, name and version, a feedback button, and a footer
@@ -1574,11 +1574,11 @@ function AboutPane() {
       <div className="flex flex-col items-center gap-3 py-14">
         <img
           src={appIcon}
-          alt="Knot"
+          alt="Journal"
           className="h-20 w-20 rounded-xl object-contain select-none"
           draggable={false}
         />
-        <div className="text-lg font-semibold text-fg">Knot</div>
+        <div className="text-lg font-semibold text-fg">Journal</div>
         <div className="text-xs text-muted">v{pkg.version}</div>
         <Button
           icon={<MessageOutlined />}
@@ -1597,7 +1597,7 @@ function AboutPane() {
           onClick={() => void api.openExternal(GITHUB_URL)}
         >
           <GithubOutlined />
-          <span>github.com/marrviin/knot</span>
+          <span>github.com/marrviin/manta-journal</span>
         </button>
         <span className="text-[11px] text-muted select-none">
           © {new Date().getFullYear()} marrviin

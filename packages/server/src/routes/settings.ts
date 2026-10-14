@@ -7,7 +7,7 @@ import type { Static } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 
 import { OkResponse, PersonalizationBody, PersonalizationResponse } from '../schemas';
-import { SBTI_TYPES } from '@knot/shared';
+import { SBTI_TYPES } from '@journal/shared';
 import { getSetting, setSetting, USER_DISPLAY_NAME, PARTNER_PERSONALITY } from '../store';
 
 /** Sanity cap: a 称呼 is a name, not a sentence. */
@@ -20,7 +20,7 @@ export function ensurePartnerPersonality(dataDir: string): void {
   if (getSetting(dataDir, PARTNER_PERSONALITY)) return;
   const picked = SBTI_TYPES[Math.floor(Math.random() * SBTI_TYPES.length)]!;
   setSetting(dataDir, PARTNER_PERSONALITY, picked.id);
-  console.log(`[Knot server] personalization: 搭档性格随机抽中「${picked.name}」（${picked.code}）`);
+  console.log(`[Journal server] personalization: 搭档性格随机抽中「${picked.name}」（${picked.code}）`);
 }
 
 export default async function settingsRoutes(app: FastifyInstance): Promise<void> {

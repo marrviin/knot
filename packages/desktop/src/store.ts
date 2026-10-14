@@ -43,18 +43,7 @@ export const GLOBAL_PROJECT = '__global__';
 export const GLOBAL_PROJECT_NAME = '全局记忆';
 
 export function dbPath(userDataDir: string): string {
-  return path.join(userDataDir, 'knot.db');
-}
-
-/** Legacy Tauri app database location (for one-time migration) */
-export function legacyDbPath(): string {
-  return path.join(
-    process.env.HOME || '',
-    'Library',
-    'Application Support',
-    'com.knot.memory',
-    'knot.db',
-  );
+  return path.join(userDataDir, 'journal.db');
 }
 
 export function open(userDataDir: string): Database.Database {
@@ -487,18 +476,4 @@ export function setSetting(key: string, value: string): void {
 
 export function deleteSetting(key: string): void {
   get().prepare('DELETE FROM settings WHERE key = ?').run(key);
-}
-
-/** Read settings from the legacy Tauri database (for one-time migration) */
-export function readLegacySettings(): Record<string, string> {
-  const legacy = legacyDbPath();
-  if (!fs.existsSync(legacy)) return {};
-  try {
-    const conn = new Database(legacy, { readonly: true });
-    const rows = conn.prepare('SELECT key, value FROM settings').all() as any[];
-    conn.close();
-    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
-  } catch {
-    return {};
-  }
 }

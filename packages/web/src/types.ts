@@ -22,7 +22,7 @@ export interface Fact {
   updatedAt: number | null;
 }
 
-/** One day's journal entry (<project>/.knot/logs/YYYY-MM-DD.md) — read-only
+/** One day's journal entry (<project>/.journal/logs/YYYY-MM-DD.md) — read-only
  *  for the UI; agents write the files directly. */
 export interface JournalEntry {
   /** YYYY-MM-DD (from the file name) */
@@ -40,7 +40,7 @@ export interface JournalPending {
   dates: string[];
 }
 
-/** Progress of the one-time existing-content import (knot://import-progress) */
+/** Progress of the one-time existing-content import (journal://import-progress) */
 export interface ImportProgress {  /** Project path ('' for a global notice, e.g. LLM not configured) */
   project: string;
   ruleId: string;

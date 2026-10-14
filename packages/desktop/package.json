@@ -1,9 +1,9 @@
 {
-  "name": "@knot/desktop",
+  "name": "@journal/desktop",
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "Knot Electron 桌面端：主进程 + preload（记忆服务以 HTTP 客户端方式接入）",
+  "description": "Journal Electron 桌面端：主进程 + preload（记忆服务以 HTTP 客户端方式接入）",
   "main": "dist-electron/main.cjs",
   "scripts": {
     "build": "pnpm build:main",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
-    "@knot/shared": "workspace:*",
+    "@journal/shared": "workspace:*",
     "better-sqlite3": "^12.4.1",
     "chokidar": "^4.0.3",
     "onnxruntime-node": "^1.30.0"

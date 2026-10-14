@@ -66,14 +66,14 @@ describe('globRoot', () => {
 
 describe('slugify', () => {
   it("matches Claude Code's project-dir slug: every non-alphanumeric char becomes -", () => {
-    expect(slugify('/Users/x/github/knot')).toBe('-Users-x-github-knot');
+    expect(slugify('/Users/x/github/journal')).toBe('-Users-x-github-journal');
     expect(slugify('/Users/x/work/my.app')).toBe('-Users-x-work-my-app');
     expect(slugify('/Users/x/my_repo v2')).toBe('-Users-x-my-repo-v2');
   });
 });
 
 describe('watchableRoot', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'knot-watch-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'journal-watch-'));
   const dir = path.join(base, 'existing');
   fs.mkdirSync(dir);
   const file = path.join(dir, 'a.md');

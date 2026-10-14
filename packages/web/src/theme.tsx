@@ -1,6 +1,6 @@
 /**
  * Shared provider shell for every renderer window (main app + settings window):
- * StyleProvider (cssinjs layering) + the knot ConfigProvider theme + AntdApp's
+ * StyleProvider (cssinjs layering) + the journal ConfigProvider theme + AntdApp's
  * toast context. Extracted so a second BrowserWindow entry can mount antd
  * components with the exact same look without importing app.tsx (circular).
  */
@@ -15,7 +15,7 @@ export function ThemeProviders({ children }: { children: ReactNode }) {
       <ConfigProvider
         locale={zhCN}
         theme={{
-          cssVar: { key: "knot" },
+          cssVar: { key: "journal" },
           token: {
             // Seed colors: 朱砂红 primary — the red-pen mark IS the brand (圈住 =
             // 打结 = 记住), so the primary voice and the journal's marks share one

@@ -49,7 +49,7 @@ export function registerIpc(ctx: IpcContext): void {
   // ---------- Standalone settings window ----------
 
   // Open (or focus the existing) settings window. The sender window is the main
-  // window — it receives knot://settings-closed when the settings window closes.
+  // window — it receives journal://settings-closed when the settings window closes.
   ipcMain.handle("open_settings", (e) => {
     const mainWin = BrowserWindow.fromWebContents(e.sender);
     if (!mainWin) throw new Error("主窗口不可用");

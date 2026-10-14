@@ -14,7 +14,7 @@ import * as store from './store';
 import * as settings from './settings';
 import { log } from './log';
 import { ensureServerProcess, isServerRunning, stopServer } from './server-process';
-import type { FactItem, IngestReport, SemanticHit } from '@knot/shared';
+import type { FactItem, IngestReport, SemanticHit } from '@journal/shared';
 
 // Shared contracts — re-exported so ipc.ts / watcher.ts / mcp-server.ts keep
 // importing them from this module.
@@ -124,7 +124,7 @@ export async function ensureMemory(userDataDir: string): Promise<Memory | null> 
       const prevSignature = store.getSetting('embed_signature');
       if (prevSignature && prevSignature !== signature) {
         console.error(
-          `[Knot mem0] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
+          `[Journal mem0] embedding 模型已从 ${prevSignature} 变为 ${signature}：旧向量与新空间不匹配，语义检索将不可用。需清空并重新导入记忆（或换回原模型）。`,
         );
       }
       store.setSetting('embed_signature', signature);
@@ -224,7 +224,7 @@ export async function ingest(
   try {
     m = await ensureMemory(userDataDir);
   } catch (e) {
-    console.error('[Knot mem0] 记忆服务初始化失败:', e);
+    console.error('[Journal mem0] 记忆服务初始化失败:', e);
     log(`mem0.ingest: 记忆服务初始化失败: ${e}`);
     return { added: 0, updated: 0, deleted: 0, notice: '记忆服务初始化失败，本批记忆未入库' };
   }
@@ -248,7 +248,7 @@ export async function ingest(
     log(`mem0.ingest: 镜像对账完成 镜像总数=${store.factCount(projectId)}`);
     return r.report;
   } catch (e) {
-    console.error('[Knot mem0] 洗入失败:', e);
+    console.error('[Journal mem0] 洗入失败:', e);
     log(`mem0.ingest: /ingest 失败: ${e}`);
     return { added: 0, updated: 0, deleted: 0, notice: `记忆入库失败（${String(e)}），本批记忆未入库` };
   }
@@ -334,7 +334,7 @@ export async function memoryCountByAgent(projectId: string, agent: string): Prom
     );
     return Number(r.count) || 0;
   } catch (e) {
-    console.error('[Knot mem0] 迁移检查读取失败:', e);
+    console.error('[Journal mem0] 迁移检查读取失败:', e);
     log(`mem0.memoryCountByAgent 失败: ${e}`);
     return 0;
   }

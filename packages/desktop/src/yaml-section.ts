@@ -40,7 +40,7 @@ export function upsertYamlMappingEntry(
     if (new RegExp(`^${escapeRe(rootKey)}:\\s*[^#\\s]`).test(text)) {
       // Flow-style / non-mapping value: not something line editing may touch.
       throw new Error(
-        `无法自动编辑 ${rootKey} 配置（不是块状映射），请手动添加 knot 条目`,
+        `无法自动编辑 ${rootKey} 配置（不是块状映射），请手动添加 journal 条目`,
       );
     }
     // Root mapping absent: append it (fresh file → no leading blank line).

@@ -17,7 +17,7 @@ async function main(): Promise<void> {
 
   // Throwaway dataDir — schema emission never touches the store, and the real
   // config would require an LLM env just to build the document.
-  const cfg = loadConfig({ KNOT_DATA_DIR: path.join(os.tmpdir(), 'knot-emit-openapi') });
+  const cfg = loadConfig({ JOURNAL_DATA_DIR: path.join(os.tmpdir(), 'journal-emit-openapi') });
   const app = buildApp(cfg, realCore(cfg));
   await app.ready();
   const doc = app.swagger();

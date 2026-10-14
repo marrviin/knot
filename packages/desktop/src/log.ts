@@ -1,4 +1,4 @@
-//! Lightweight file logger: appends timestamped lines to userData/knot.log.
+//! Lightweight file logger: appends timestamped lines to userData/journal.log.
 //! The dev terminal's console output isn't accessible post-hoc, so key main-process
 //! events (project add, import, mem0 sync) are mirrored to a file for diagnosis.
 
@@ -8,7 +8,7 @@ import fs from 'node:fs';
 let logFile = '';
 
 export function initLog(userDataDir: string): void {
-  logFile = path.join(userDataDir, 'knot.log');
+  logFile = path.join(userDataDir, 'journal.log');
 }
 
 export function log(msg: string): void {

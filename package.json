@@ -1,5 +1,5 @@
 {
-  "name": "knot",
+  "name": "manta-journal",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -8,13 +8,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @knot/desktop rebuild:electron >/dev/null 2>&1; pnpm --filter @knot/desktop build:main && pnpm build:server && concurrently -k \"pnpm --filter @knot/web dev\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron packages/desktop\"",
-    "build": "pnpm --filter @knot/web build && pnpm --filter @knot/desktop build",
-    "build:server": "pnpm --filter @knot/server build",
-    "rebuild:electron": "pnpm --filter @knot/desktop rebuild:electron",
+    "dev": "pnpm --filter @journal/desktop rebuild:electron >/dev/null 2>&1; pnpm --filter @journal/desktop build:main && pnpm build:server && concurrently -k \"pnpm --filter @journal/web dev\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron packages/desktop\"",
+    "build": "pnpm --filter @journal/web build && pnpm --filter @journal/desktop build",
+    "build:server": "pnpm --filter @journal/server build",
+    "rebuild:electron": "pnpm --filter @journal/desktop rebuild:electron",
     "start": "electron packages/desktop",
     "test": "pnpm -r --workspace-concurrency=1 test",
-    "dist": "pnpm build && pnpm build:server && pnpm --filter @knot/desktop dist"
+    "dist": "pnpm build && pnpm build:server && pnpm --filter @journal/desktop dist"
   },
   "devDependencies": {
     "concurrently": "^9",

@@ -1,4 +1,4 @@
-# 🐋 Knot
+# 🐋 Journal
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -12,7 +12,7 @@ Design and roadmap: [docs/design.md](docs/design.md).
 Custom agent --low-frequency overwrite--> .myagent/mem.json
                                               │ background chokidar watch (500ms debounce)
                                               ▼
-   Knot desktop: mem0 refinement pipeline (fact extraction → semantic dedup → conflict resolution)
+   Journal desktop: mem0 refinement pipeline (fact extraction → semantic dedup → conflict resolution)
                 + SQLite mirror store + white-box fact board
                                               │ local HTTP MCP server (http://127.0.0.1:27183/mcp)
                                               ▼
@@ -20,8 +20,8 @@ Custom agent --low-frequency overwrite--> .myagent/mem.json
 ```
 
 - **Ingest**: chokidar watches `.myagent/mem.json` in every registered project; raw text is handed to mem0 for refinement (fact extraction, semantic dedup, new-vs-old conflict resolution). LLM + embeddings via MiniMax or any OpenAI-compatible service (user-supplied API key; MiniMax embeddings go through a local format-translation shim).
-- **Storage**: mem0's built-in SQLite vector store (`<userData>/mem0/vectors.db`) is the source of truth; a `knot.db` mirror serves the UI board and MCP keyword search, linked by memory uuid.
-- **Output**: the running app hosts a local HTTP MCP server (`http://127.0.0.1:27183/mcp`, port overridable via `KNOT_MCP_PORT`) exposing `recall_memories` / `list_projects`; a headless stdio mode (`--mcp-server`) remains as a fallback. Retrieval is hybrid: FTS5 BM25 keyword search fused with mem0 semantic vector search via RRF (source-labeled results; degrades to pure BM25 when no LLM service is configured).
+- **Storage**: mem0's built-in SQLite vector store (`<userData>/mem0/vectors.db`) is the source of truth; a `journal.db` mirror serves the UI board and MCP keyword search, linked by memory uuid.
+- **Output**: the running app hosts a local HTTP MCP server (`http://127.0.0.1:27183/mcp`, port overridable via `JOURNAL_MCP_PORT`) exposing `recall_memories` / `list_projects`; a headless stdio mode (`--mcp-server`) remains as a fallback. Retrieval is hybrid: FTS5 BM25 keyword search fused with mem0 semantic vector search via RRF (source-labeled results; degrades to pure BM25 when no LLM service is configured).
 - **Board**: white-box fact cards with manual add/edit/delete (changes sync back to mem0), preventing memory divergence between agents.
 
 ## Development
@@ -40,9 +40,9 @@ start with `env -u ELECTRON_RUN_AS_NODE`.
 
 ## Usage
 
-1. Drag a project folder into the window (or click "Add Project") — Knot starts watching `.myagent/mem.json` inside it;
+1. Drag a project folder into the window (or click "Add Project") — Journal starts watching `.myagent/mem.json` inside it;
 2. Fill in your MiniMax API key under refinement settings and enable LLM refinement;
-3. Click "Activate Claude Code memory" — Knot registers an HTTP entry (`http://127.0.0.1:27183/mcp`) into the `mcpServers` key of `~/.claude.json` (auto-backup before writing);
+3. Click "Activate Claude Code memory" — Journal registers an HTTP entry (`http://127.0.0.1:27183/mcp`) into the `mcpServers` key of `~/.claude.json` (auto-backup before writing);
 4. Restart Claude Code; at the start of a new task, call `recall_memories` to pull the memory left behind by previous agents.
 
 ## Custom Agent Write Format

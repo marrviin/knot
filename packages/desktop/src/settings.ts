@@ -5,7 +5,7 @@
 //! the renderer only ever receives a "is configured" flag.
 
 import type * as store from './store';
-import { PROVIDER_DEFAULT } from '@knot/shared';
+import { PROVIDER_DEFAULT } from '@journal/shared';
 
 /** Where the memory service runs: 'local' = Electron spawns the server/ bundle as
  *  a child process (default, data stays in userData); 'remote' = a user-deployed

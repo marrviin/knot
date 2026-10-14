@@ -6,7 +6,7 @@
 //!
 //! bge-small-zh-v1.5 usage: symmetric similarity needs no input prefix (the
 //! official retrieval instruction applies to short-query → long-doc search,
-//! which Knot's fact recall is not) — texts are embedded as-is.
+//! which Journal's fact recall is not) — texts are embedded as-is.
 
 import fs from 'node:fs';
 import http from 'node:http';
@@ -56,7 +56,7 @@ export async function startLocalEmbedder(modelDir: string): Promise<ShimHandle> 
   // cls pooling — bge-small-zh uses the [CLS] embedding (normalized) as the
   // sentence representation, unlike e5's mean pooling.
   const extractor = (await pipeline('feature-extraction', modelDir, { dtype: 'q8' })) as unknown as Extractor;
-  console.log(`[Knot local-embedder] 模型已加载: ${modelDir}`);
+  console.log(`[Journal local-embedder] 模型已加载: ${modelDir}`);
 
   let queue: Promise<void> = Promise.resolve();
   const embed = async (texts: string[]): Promise<number[][]> => {
@@ -103,7 +103,7 @@ export async function startLocalEmbedder(modelDir: string): Promise<ShimHandle> 
         }),
       );
     } catch (e) {
-      console.error('[Knot local-embedder] embedding 失败:', e);
+      console.error('[Journal local-embedder] embedding 失败:', e);
       // 502 keeps the same failure semantics as the MiniMax shim (mem0's openai
       // embedder retries on it); empty vectors would silently corrupt retrieval.
       res.writeHead(502).end(JSON.stringify({ error: { message: String(e) } }));

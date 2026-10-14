@@ -32,13 +32,13 @@ let watched = new Set<string>();
 const debounces = new Map<string, NodeJS.Timeout>();
 let onIngested: (projectId: string, report: mem0.IngestReport) => void = () => {};
 
-// ---------- Project journal logs (.knot/logs — refresh-only watch) ----------
-// Journals are plain markdown files at <project>/.knot/logs/YYYY-MM-DD.md
+// ---------- Project journal logs (.journal/logs — refresh-only watch) ----------
+// Journals are plain markdown files at <project>/.journal/logs/YYYY-MM-DD.md
 // (one per day), written directly by any agent — the filesystem is the truth
 // source. They never enter mem0: watching them only pushes refresh
 // notifications to the renderer, which re-reads them from the service.
 
-const JOURNAL_DIR = path.join('.knot', 'logs');
+const JOURNAL_DIR = path.join('.journal', 'logs');
 const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/;
 
 /** Watched journal dir → owning project (only dirs that exist right now) */
@@ -276,7 +276,7 @@ export function rescan(): void {
 }
 
 /** Wildcard-less file targets (e.g. CLAUDE.md on first run) and not-yet-created
- *  journal log dirs (<project>/.knot/logs) that don't exist yet: polled so their
+ *  journal log dirs (<project>/.journal/logs) that don't exist yet: polled so their
  *  creation is picked up without the parent-fallback's recursive watch. Kept as a
  *  module var — rescan() rebuilds it on every pass. */
 let missingFileTargets = new Set<string>();
@@ -353,7 +353,7 @@ function createWatcher(): FSWatcher {
   });
   const handle = (changed: string) => {
     // Journal log files refresh the reader only — checked first so a broad
-    // custom card can't route .knot/logs content into mem0 extraction.
+    // custom card can't route .journal/logs content into mem0 extraction.
     const journalProject = journalProjectOf(changed);
     if (journalProject) {
       scheduleJournalNotify(journalProject, changed);

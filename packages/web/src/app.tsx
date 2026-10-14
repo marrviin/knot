@@ -42,7 +42,7 @@ import {
 } from "@ant-design/icons";
 import pkg from "../package.json";
 import * as api from "./api";
-import knotIllustration from "./assets/knot.png";
+import journalIllustration from "./assets/journal.png";
 import type { Fact, ImportProgress, Project } from "./types";
 import { menuSkinTheme } from "./menu-skin";
 import { ThemeProviders } from "./theme";
@@ -178,8 +178,8 @@ function Shell() {
 
   // Refresh after the background watcher ingests new memories / manual edits
   useEffect(() => {
-    return window.knot.listen(
-      "knot://facts-changed",
+    return window.journal.listen(
+      "journal://facts-changed",
       (e: { path: string; notice?: string | null; refreshAll?: boolean }) => {
         if (e.path === activePath || e.refreshAll)
           reloadFacts(e.path ? e.path : (activePath ?? ""));
@@ -193,7 +193,7 @@ function Shell() {
   // + summary toasts. State lives in Shell — FactPanel remounts on project switch
   // (key={active.path}), so the accumulated file list survives the remount.
   useEffect(() => {
-    return window.knot.listen("knot://import-progress", (p: ImportProgress) => {
+    return window.journal.listen("journal://import-progress", (p: ImportProgress) => {
       if (p.phase === "start") {
         setImports((m) => ({ ...m, [p.project]: { ...p, files: [] } }));
       } else if (p.phase === "file") {
@@ -254,7 +254,7 @@ function Shell() {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
       if (!file) return;
-      const path = window.knot.getPathForFile(file);
+      const path = window.journal.getPathForFile(file);
       if (path) addProjectByPath(path);
     },
     [addProjectByPath],
@@ -355,14 +355,11 @@ function Shell() {
             <div className="min-w-0">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-[16px] leading-tight font-semibold text-fg">
-                  结绳
-                </span>
-                <span className="text-[12px] leading-tight text-muted">
-                  jié shéng
+                  Journal
                 </span>
               </div>
               <div className="truncate mt-1 text-[12px] leading-tight text-muted">
-                事大大其绳 · 事小小其绳
+                共享记忆总线
               </div>
             </div>
           </div>
@@ -433,15 +430,15 @@ function Shell() {
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            {/* Home empty state: knot-tying illustration (a rope hung with memory knots);
-                the white-background image blends right into the light surface */}
+            {/* Home empty state: brand illustration; the white-background image
+                blends right into the light surface */}
             <img
-              src={knotIllustration}
-              alt="结绳记事"
+              src={journalIllustration}
+              alt="Journal"
               className="w-[min(360px,80%)] select-none"
               draggable={false}
             />
-            <div className="text-[14px] text-muted">事大大其绳，事小小其绳</div>
+            <div className="text-[14px] text-muted">共享记忆总线</div>
           </div>
         )}
       </div>

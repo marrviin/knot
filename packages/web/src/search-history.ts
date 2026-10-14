@@ -4,7 +4,7 @@
  *  is what the renderer always had in hand. */
 
 const LIMIT = 10;
-const keyOf = (projectId: string) => `knot:search_history:${projectId}`;
+const keyOf = (projectId: string) => `journal:search_history:${projectId}`;
 
 export function getSearchHistory(projectId: string): string[] {
   const raw = localStorage.getItem(keyOf(projectId));

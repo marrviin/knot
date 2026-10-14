@@ -4,7 +4,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { webUtils } from 'electron';
 
-contextBridge.exposeInMainWorld('knot', {
+contextBridge.exposeInMainWorld('journal', {
   /** Maps to Tauri invoke(command, args); rejects when the main process throws */
   invoke: (command: string, ...args: unknown[]): Promise<unknown> =>
     ipcRenderer.invoke(command, ...args),

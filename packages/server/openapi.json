@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Knot memory service",
+    "title": "Journal memory service",
     "description": "记忆服务：facts 增删改查 + 语义搜索 + 项目注册表",
     "version": "0.2.0"
   },

@@ -10,7 +10,7 @@ import path from 'node:path';
 let settingsWin: BrowserWindow | null = null;
 
 /** Create (or focus) the singleton settings window. `mainWin` is only used to be
- *  notified when the settings window closes (knot://settings-closed → the main
+ *  notified when the settings window closes (journal://settings-closed → the main
  *  window re-connects the memory service, the equivalent of the old modal's
  *  onClose hook). */
 export function createOrShowSettingsWindow(mainWin: BrowserWindow): void {
@@ -48,7 +48,7 @@ export function createOrShowSettingsWindow(mainWin: BrowserWindow): void {
   settingsWin.on('closed', () => {
     settingsWin = null;
     if (!mainWin.isDestroyed()) {
-      mainWin.webContents.send('knot://settings-closed');
+      mainWin.webContents.send('journal://settings-closed');
     }
   });
 

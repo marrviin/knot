@@ -1,9 +1,9 @@
 {
-  "name": "@knot/web",
+  "name": "@journal/web",
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "Knot 渲染层（React + antd + Vite），构建产物直接输出到 @knot/desktop/dist 供打包",
+  "description": "Journal 渲染层（React + antd + Vite），构建产物直接输出到 @journal/desktop/dist 供打包",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -15,7 +15,7 @@
     "@ant-design/cssinjs": "^2.1.2",
     "@ant-design/icons": "^6.3.2",
     "@hey-api/client-fetch": "^0.13.1",
-    "@knot/shared": "workspace:*",
+    "@journal/shared": "workspace:*",
     "antd": "^6.6.2",
     "classnames": "^2.5.1",
     "react": "^19.2.0",

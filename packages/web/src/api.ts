@@ -2,7 +2,7 @@
  *  over HTTP via the generated hey-api client (openapi.json → src/client), so
  *  the same code path serves the desktop webview and the future browser build;
  *  desktop-only capabilities (directory picker, MCP injection, watch rules,
- *  settings, import events) stay on window.knot IPC from the preload.
+ *  settings, import events) stay on window.journal IPC from the preload.
  *
  *  Bootstrap: desktop calls initMemoryEndpoint() once at startup (memory_endpoint
  *  IPC → setMemoryEndpoint); the future web build reads its saved service config
@@ -34,7 +34,7 @@ import {
 
 declare global {
   interface Window {
-    knot: {
+    journal: {
       invoke: <T = void>(command: string, ...args: unknown[]) => Promise<T>;
       listen: (event: string, cb: (payload: any) => void) => () => void;
       getPathForFile: (file: File) => string;
@@ -48,7 +48,7 @@ declare global {
  *  child process's loopback base + per-launch bearer token. Returns false when
  *  the service is disabled/unconfigured — callers surface the Chinese notice. */
 export async function initMemoryEndpoint(): Promise<boolean> {
-  const ep = await window.knot.invoke<{ base: string; token: string | null } | null>(
+  const ep = await window.journal.invoke<{ base: string; token: string | null } | null>(
     "memory_endpoint",
   );
   if (!ep) return false;
@@ -75,7 +75,7 @@ async function withReconnect<T>(call: () => Promise<T>): Promise<T> {
  *  mirror store (MCP keyword search + hybrid search read it) from the service
  *  after the renderer mutated facts over HTTP. No-op cost when nothing changed. */
 export const syncMirror = (projectId: string) =>
-  window.knot.invoke("sync_mirror", projectId);
+  window.journal.invoke("sync_mirror", projectId);
 
 /** Throw with the standard notice when the endpoint was never bootstrapped
  *  (service disabled in settings) — display APIs would otherwise fire requests
@@ -118,9 +118,9 @@ export async function listProjects(): Promise<Project[]> {
 }
 
 /** True when running inside the desktop shell (preload bridge present); the
- *  browser build has no window.knot and skips the desktop-only IPC calls. */
+ *  browser build has no window.journal and skips the desktop-only IPC calls. */
 const hasDesktopBridge = () =>
-  typeof (globalThis as { knot?: unknown }).knot !== "undefined";
+  typeof (globalThis as { journal?: unknown }).journal !== "undefined";
 
 /** Register a directory as a project. Desktop: IPC resolves the canonical path
  *  (realpath), wires the file watcher and kicks the one-time existing-content
@@ -129,7 +129,7 @@ const hasDesktopBridge = () =>
  *  Browser build: registry registration only (name derived from the path tail). */
 export async function addProject(path: string): Promise<Project> {
   if (hasDesktopBridge()) {
-    const project = await window.knot.invoke<Project>("add_project", path);
+    const project = await window.journal.invoke<Project>("add_project", path);
     requireEndpoint();
     const { error } = await registerProjectHttp({ body: { projectId: project.path } });
     if (error) throw error;
@@ -149,7 +149,7 @@ export async function removeProject(path: string): Promise<void> {
   requireEndpoint();
   const { error } = await removeProjectHttp({ path: { projectId: path } });
   if (error) throw error;
-  if (hasDesktopBridge()) await window.knot.invoke("remove_project", path);
+  if (hasDesktopBridge()) await window.journal.invoke("remove_project", path);
 }
 
 // ---------- Facts ----------
@@ -217,13 +217,13 @@ export async function deleteFact(id: string, projectId: string): Promise<void> {
 export type ConnectorAgent = "claude-code" | "codex" | "hermes" | "joycode" | "workbuddy";
 
 export const injectMcp = (agent: ConnectorAgent) =>
-  window.knot.invoke<string>("inject_mcp", agent);
+  window.journal.invoke<string>("inject_mcp", agent);
 
 export const removeMcp = (agent: ConnectorAgent) =>
-  window.knot.invoke<string>("remove_mcp", agent);
+  window.journal.invoke<string>("remove_mcp", agent);
 
 export const mcpStatus = (agent: ConnectorAgent) =>
-  window.knot.invoke<boolean>("mcp_status", agent);
+  window.journal.invoke<boolean>("mcp_status", agent);
 
 // ---------- Settings (memory service connection) ----------
 
@@ -239,7 +239,7 @@ export interface LlmSettings {
 }
 
 export const getSettings = () =>
-  window.knot.invoke<LlmSettings>("get_settings");
+  window.journal.invoke<LlmSettings>("get_settings");
 
 /** Pass null for apiKey to keep the existing value; '' explicitly clears it.
  *  Same contract for remoteToken (only meaningful in remote mode). */
@@ -251,7 +251,7 @@ export const saveSettings = (
   remoteUrl?: string,
   remoteToken?: string | null,
 ) =>
-  window.knot.invoke(
+  window.journal.invoke(
     "save_settings",
     baseUrl,
     apiKey,
@@ -272,7 +272,7 @@ export interface ConnectionTestResult {
 }
 
 export const testMemoryConnection = (url: string, token: string | null) =>
-  window.knot.invoke<ConnectionTestResult>("test_memory_connection", url, token);
+  window.journal.invoke<ConnectionTestResult>("test_memory_connection", url, token);
 
 // ---------- Saved model library (multiple configs, one active) ----------
 
@@ -285,7 +285,7 @@ export interface ModelEntry {
 }
 
 export const listModels = () =>
-  window.knot.invoke<{ models: ModelEntry[]; activeId: string | null }>(
+  window.journal.invoke<{ models: ModelEntry[]; activeId: string | null }>(
     "list_models",
   );
 
@@ -296,19 +296,19 @@ export const saveModel = (
   entry: Omit<ModelEntry, "hasApiKey" | "id"> & { id?: string },
   apiKey?: string | null,
 ) =>
-  window.knot.invoke<{
+  window.journal.invoke<{
     model: ModelEntry;
     activeId: string | null;
     notice?: string;
   }>("save_model", entry, apiKey ?? undefined);
 
 export const deleteModel = (id: string) =>
-  window.knot.invoke("delete_model", id);
+  window.journal.invoke("delete_model", id);
 
 /** Make a library entry the active model service (hot-reloads watching; may
  *  return the embedding-invalidation notice). */
 export const activateModel = (id: string) =>
-  window.knot.invoke<{ activeId: string | null; notice?: string }>(
+  window.journal.invoke<{ activeId: string | null; notice?: string }>(
     "activate_model",
     id,
   );
@@ -316,23 +316,23 @@ export const activateModel = (id: string) =>
 // ---------- Standalone settings window ----------
 
 export const openSettingsWindow = () =>
-  window.knot.invoke("open_settings");
+  window.journal.invoke("open_settings");
 
 export const closeSettingsWindow = () =>
-  window.knot.invoke("close_settings");
+  window.journal.invoke("close_settings");
 
 /** Fired to the main window when the settings BrowserWindow closes — the main
  *  window re-bootstraps the memory endpoint (the old modal's onClose hook). */
 export const onSettingsClosed = (cb: () => void) =>
-  window.knot.listen("knot://settings-closed", cb);
+  window.journal.listen("journal://settings-closed", cb);
 
 // ---------- Last opened project ----------
 
 export const getLastProject = () =>
-  window.knot.invoke<string | null>("get_last_project");
+  window.journal.invoke<string | null>("get_last_project");
 
 export const setLastProject = (path: string) =>
-  window.knot.invoke("set_last_project", path);
+  window.journal.invoke("set_last_project", path);
 
 // ---------- Search history (per project, last 10; localStorage) ----------
 
@@ -356,16 +356,16 @@ export interface WatchRule {
 }
 
 export const getWatchRules = () =>
-  window.knot.invoke<WatchRule[]>("get_watch_rules");
+  window.journal.invoke<WatchRule[]>("get_watch_rules");
 
 /** After saving, the main process rebuilds watchers immediately and imports existing content for new rules */
 export const saveWatchRules = (rules: WatchRule[]) =>
-  window.knot.invoke<WatchRule[]>("save_watch_rules", rules);
+  window.journal.invoke<WatchRule[]>("save_watch_rules", rules);
 
 // ---------- Directory picker ----------
 
 export const pickDirectory = () =>
-  window.knot.invoke<string | null>("pick_directory");
+  window.journal.invoke<string | null>("pick_directory");
 
 // ---------- Semantic search (service /search) ----------
 
@@ -405,7 +405,7 @@ export async function searchMemories(
   });
 }
 
-// ---------- Journals (.knot/logs, read-only — agents write the files) ----------
+// ---------- Journals (.journal/logs, read-only — agents write the files) ----------
 
 export async function listJournals(projectId: string): Promise<JournalEntry[]> {
   return withReconnect(async () => {
@@ -477,7 +477,7 @@ export async function savePersonalization(
 // ---------- External links ----------
 
 export const openExternal = (url: string) =>
-  window.knot.invoke("open_external", url);
+  window.journal.invoke("open_external", url);
 
 // Open a local file with its default app (used by the memory card's source path)
-export const openPath = (path: string) => window.knot.invoke("open_path", path);
+export const openPath = (path: string) => window.journal.invoke("open_path", path);

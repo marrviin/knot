@@ -1,5 +1,5 @@
 /**
- * Journal reader: the project's .knot/logs/YYYY-MM-DD.md entries (read server
+ * Journal reader: the project's .journal/logs/YYYY-MM-DD.md entries (read server
  * /projects/:id/journals) as a stack of day cards, newest first — the lab-log
  * reading experience. Agents write the files directly; changes push a
  * facts-changed event, which re-reads the list.
@@ -153,9 +153,9 @@ export function JournalView({
   useEffect(() => {
     load();
     // Desktop only: the refresh event comes from the main process's watcher
-    // (the browser build has no window.knot and just misses live refresh).
-    if (typeof (globalThis as { knot?: unknown }).knot === "undefined") return;
-    return window.knot.listen("knot://facts-changed", (e: { path: string }) => {
+    // (the browser build has no window.journal and just misses live refresh).
+    if (typeof (globalThis as { journal?: unknown }).journal === "undefined") return;
+    return window.journal.listen("journal://facts-changed", (e: { path: string }) => {
       if (e.path === project.path) load();
     });
   }, [load, project.path]);

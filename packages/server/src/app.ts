@@ -22,7 +22,7 @@
 //! Swagger: /docs (swagger-ui) + /docs/json (openapi.json) — scripts/emit-openapi.ts
 //! snapshots the latter to packages/server/openapi.json for hey-api generation.
 //!
-//! Auth: when KNOT_TOKEN is set, every route except /health requires
+//! Auth: when JOURNAL_TOKEN is set, every route except /health requires
 //! `Authorization: Bearer <token>` — enforced by the encapsulated plugin in
 //! plugins/auth.ts; /health is registered outside that scope.
 //!
@@ -50,7 +50,7 @@ import settingsRoutes from './routes/settings';
 
 export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): FastifyInstance {
   const app = Fastify({
-    logger: { level: process.env.KNOT_LOG_LEVEL ?? 'info' },
+    logger: { level: process.env.JOURNAL_LOG_LEVEL ?? 'info' },
     // /ingest waits on LLM extraction (minutes on bulk imports) — disable the
     // default request timeout; per-operation timeouts live in the core.
     requestTimeout: 0,
@@ -67,7 +67,7 @@ export function buildApp(cfg: ServerConfig, coreApi: CoreApi = realCore(cfg)): F
   app.register(swagger, {
     openapi: {
       info: {
-        title: 'Knot memory service',
+        title: 'Journal memory service',
         description: '记忆服务：facts 增删改查 + 语义搜索 + 项目注册表',
         version: '0.2.0',
       },

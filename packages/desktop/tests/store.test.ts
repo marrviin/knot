@@ -8,7 +8,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '../src/store';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'knot-store-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'journal-store-test-'));
 store.open(tmp);
 
 /** store keeps one module-level db; clear all rows between tests and restore the
@@ -150,7 +150,7 @@ describe('upsertFact dedup (mem0 re-ADDs the same content under a fresh uuid)', 
 
 describe('initSchema self-heal (collapses pre-existing duplicates on open)', () => {
   it('deletes twin rows keeping the newest and creates the unique index', () => {
-    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'knot-store-heal-'));
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'journal-store-heal-'));
     store.closeForTest(); // release the shared db so open() actually opens tmp2
     store.open(tmp2);
     store.insertProject('/tmp/h1');
