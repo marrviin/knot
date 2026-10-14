@@ -37,6 +37,7 @@ import {
   HistoryOutlined,
   LoadingOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import pkg from "../package.json";
@@ -474,6 +475,44 @@ function FactPanel({
   /** Header toggle: journal reader instead of the memory wall (search and the
    *  agent filter only cover memories, so they hide in journal mode) */
   const [journalMode, setJournalMode] = useState(false);
+  /** True while a journal regeneration is being watched for results (debug
+   *  entry, lives in the header's right side) */
+  const [journalGen, setJournalGen] = useState(false);
+  const journalGenSeq = useRef(0);
+  /** Bumped once regenerate's server-side deletion has landed — JournalView's
+   *  owed-planner re-runs and the deleted days turn into progress cards. */
+  const [journalRegenNonce, setJournalRegenNonce] = useState(0);
+
+  // Debug regeneration (临时调试用): delete the project's past-date journals
+  // server-side, then regenerate them from the same memories. Deletion lands
+  // immediately (the journal view re-lists via the facts-changed watcher),
+  // files refill as the LLM writes them — poll until the original dates are
+  // all back (or, from nothing, the first one lands).
+  const triggerJournalGen = useCallback(async () => {
+    if (journalGen) return;
+    setJournalGen(true);
+    const seq = ++journalGenSeq.current;
+    try {
+      const before = (await api.listJournals(project.path))
+        .map((e) => e.date)
+        .join(",");
+      await api.regenerateJournals(project.path);
+      setJournalRegenNonce((n) => n + 1);
+      onNotify("已删除现有日记，正在重新生成…");
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 8000));
+        if (seq !== journalGenSeq.current) return; // superseded by a newer click
+        const now = (await api.listJournals(project.path))
+          .map((e) => e.date)
+          .join(",");
+        if (before ? now === before : now) break;
+      }
+    } catch (e: any) {
+      onNotify(`重新生成失败: ${e?.message ?? e}`, "error");
+    } finally {
+      if (seq === journalGenSeq.current) setJournalGen(false);
+    }
+  }, [journalGen, project.path, onNotify]);
 
   useEffect(() => {
     api
@@ -543,8 +582,10 @@ function FactPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="shrink-0 border-b border-line px-6 py-4">
-        <div className="flex items-center justify-between gap-4">
+      {/* Fixed 64px header: content above can mount/unmount (agent icons,
+          regenerate button, search spinner) without shifting the layout */}
+      <header className="flex h-16 shrink-0 items-center border-b border-line px-6">
+        <div className="flex w-full items-center justify-between gap-4">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <h2 className="m-0 text-lg font-semibold text-fg">
               {project.name}
@@ -635,7 +676,7 @@ function FactPanel({
                       }
                       className={`flex cursor-pointer items-center rounded-lg border-0 p-1 transition-colors ${
                         active
-                          ? "bg-[color-mix(in_srgb,#3768fa_12%,transparent)]"
+                          ? "bg-[color-mix(in_srgb,var(--ant-color-primary)_12%,transparent)]"
                           : "bg-transparent opacity-60 hover:opacity-100"
                       }`}
                     >
@@ -645,6 +686,23 @@ function FactPanel({
                 })}
               </div>
             )}
+            {/* Journal mode: debug regeneration entry (临时调试用) sits left
+                of the reader toggle */}
+            {journalMode && (
+              <button
+                type="button"
+                title="调试用：删除本项目过去的日记并从同样的记忆条目重新生成（今天的日记不受影响）"
+                onClick={() => void triggerJournalGen()}
+                disabled={journalGen}
+                className={`flex cursor-pointer items-center rounded-lg border-0 p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  journalGen
+                    ? "bg-[color-mix(in_srgb,var(--ant-color-primary)_12%,transparent)] text-accent"
+                    : "bg-transparent text-muted opacity-70 hover:opacity-100"
+                }`}
+              >
+                <ReloadOutlined spin={journalGen} className="text-[18px]" />
+              </button>
+            )}
             <Divider vertical className="m-0" />
             {/* Rightmost entry: toggle the journal reader (experiment logs) */}
             <button
@@ -653,7 +711,7 @@ function FactPanel({
               onClick={() => setJournalMode((v) => !v)}
               className={`flex cursor-pointer items-center rounded-lg border-0 p-1.5 transition-colors ${
                 journalMode
-                  ? "bg-[color-mix(in_srgb,#3768fa_12%,transparent)] text-accent"
+                  ? "bg-[color-mix(in_srgb,var(--ant-color-primary)_12%,transparent)] text-accent"
                   : "bg-transparent text-muted opacity-70 hover:opacity-100"
               }`}
             >
@@ -670,7 +728,7 @@ function FactPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {journalMode ? (
-          <JournalView project={project} onNotify={onNotify} />
+          <JournalView project={project} onNotify={onNotify} regenNonce={journalRegenNonce} />
         ) : hits ? (
           (shownHits?.length ?? 0) === 0 ? (
             // Empty state: header line + Empty centered together in the container

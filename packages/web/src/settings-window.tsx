@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App as AntdApp,
   Button,
+  Dropdown,
   Input,
   Modal,
   Popconfirm,
@@ -23,6 +24,8 @@ import {
   ApiOutlined,
   CloseOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
+  EllipsisOutlined,
   ExperimentOutlined,
   GithubOutlined,
   InfoCircleOutlined,
@@ -41,6 +44,20 @@ import { SBTI_IMAGES } from "./sbti-images";
 import { ThemeProviders } from "./theme";
 import * as api from "./api";
 import appIcon from "./assets/app-icon.png";
+import openaiIcon from "./assets/providers/openai.svg";
+import minimaxIcon from "./assets/providers/minimax.svg";
+import deepseekIcon from "./assets/providers/deepseek.ico";
+import kimiIcon from "./assets/providers/kimi.ico";
+import zhipuIcon from "./assets/providers/zhipu.png";
+import siliconflowIcon from "./assets/providers/siliconflow.png";
+import alibabacloudIcon from "./assets/providers/alibabacloud.svg";
+import geminiIcon from "./assets/providers/gemini.svg";
+import mistralIcon from "./assets/providers/mistral.svg";
+import openrouterIcon from "./assets/providers/openrouter.svg";
+import ollamaIcon from "./assets/providers/ollama.svg";
+import volcengineIcon from "./assets/providers/volcengine.png";
+import xaiIcon from "./assets/providers/xai.ico";
+import groqIcon from "./assets/providers/groq.ico";
 import pkg from "../package.json";
 
 type Notify = (message: string, type?: "info" | "error") => void;
@@ -199,8 +216,10 @@ function SettingsShell({ onNotify }: { onNotify: Notify }) {
           would overflow by exactly the padding amount). */}
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <div className="pc-settings-header h-[54px] shrink-0" />
-        <div className="box-border min-h-0 min-w-0 flex-1 overflow-auto px-6 pb-6">
-          <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-5">
+        {/* 纵向 flex：面板容器 flex-1 撑满滚动区，子页面的 min-h-full 才有确定的
+            参照高度（否则关于页等垂直居中失效——百分比高度对着内容高度解析不出）。 */}
+        <div className="box-border flex min-h-0 min-w-0 flex-1 flex-col overflow-auto px-6 pb-6">
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5">
             {pane === "about" ? (
               <AboutPane />
             ) : pane === "personalization" ? (
@@ -227,46 +246,149 @@ function SettingsShell({ onNotify }: { onNotify: Notify }) {
   );
 }
 
-/** 服务预设（对齐 joybuddy 模型配置的预设下拉交互）：命中预设自动填 Base URL 和协议，
- *  选「自定义」才手填。接入更多上游：往这里追加一条即可。baseUrl 为 null 的是「自定义」项。
- *  protocol: minimax = MiniMax 私有协议（LLM 走 mem0 minimax provider、embedding 经本地
- *  shim 转换）；openai = OpenAI 兼容协议（标准 /chat/completions + /embeddings 直连）。 */
+/** 服务预设（对齐 joybuddy 模型配置的预设下拉交互）：命中预设自动填 Base URL 和
+ *  默认模型名，选「自定义」才手填。接入更多上游：往这里追加一条即可。baseUrl 为
+ *  null 的是「自定义」项。所有预设都走 OpenAI 兼容协议（标准 /chat/completions）。
+ *  命名对齐行业主流（Cherry Studio / LobeChat 的服务商清单）。
+ *
+ *  图标来源（打包进安装包，离线可用）：openai/minimax/alibabacloud/gemini/
+ *  openrouter/ollama/mistral 取自 simple-icons（CC0）；deepseek/xai/groq 取自
+ *  官网 favicon.ico；zhipu/volcengine 取自官网 favicon.png；siliconflow 取自
+ *  siliconflow.cn 的 favicon（实为 PNG）；kimi 取自 kimi.com 的 favicon.ico。 */
 const LLM_PRESETS = [
-  {
-    key: "minimax-cn",
-    label: "MiniMax 国内",
-    baseUrl: "https://api.minimax.cn/v1",
-    protocol: "minimax" as const,
-  },
-  {
-    key: "minimax-io",
-    label: "MiniMax 海外",
-    baseUrl: "https://api.minimax.io/v1",
-    protocol: "minimax" as const,
-  },
   {
     key: "openai",
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
-    protocol: "openai" as const,
+    model: "gpt-5-mini",
+    iconSrc: openaiIcon,
+  },
+  {
+    key: "deepseek",
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    iconSrc: deepseekIcon,
+  },
+  {
+    key: "kimi",
+    label: "月之暗面 Moonshot",
+    baseUrl: "https://api.moonshot.cn/v1",
+    model: "kimi-k2",
+    iconSrc: kimiIcon,
+  },
+  {
+    key: "zhipu",
+    label: "智谱 GLM",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    model: "glm-4.6",
+    iconSrc: zhipuIcon,
+  },
+  {
+    key: "minimax",
+    label: "MiniMax",
+    baseUrl: "https://api.minimax.cn/v1",
+    model: "MiniMax-M2.7",
+    iconSrc: minimaxIcon,
+  },
+  {
+    key: "minimax-global",
+    label: "MiniMax Global",
+    baseUrl: "https://api.minimax.io/v1",
+    model: "MiniMax-M2.7",
+    iconSrc: minimaxIcon,
   },
   {
     key: "siliconflow",
     label: "硅基流动",
     baseUrl: "https://api.siliconflow.cn/v1",
-    protocol: "openai" as const,
+    model: "deepseek-ai/DeepSeek-V3",
+    iconSrc: siliconflowIcon,
   },
-  { key: "custom", label: "自定义", baseUrl: null, protocol: null },
+  {
+    key: "dashscope",
+    label: "阿里云百炼",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen-plus",
+    iconSrc: alibabacloudIcon,
+  },
+  {
+    key: "ark",
+    label: "火山方舟",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    model: "doubao-seed-1.6",
+    iconSrc: volcengineIcon,
+  },
+  {
+    key: "gemini",
+    label: "Gemini",
+    // Google AI Studio 的 OpenAI 兼容端点（路径含尾斜杠，Google 官方如此定义）。
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    model: "gemini-2.5-flash",
+    iconSrc: geminiIcon,
+  },
+  {
+    key: "xai",
+    label: "xAI",
+    baseUrl: "https://api.x.ai/v1",
+    model: "grok-4",
+    iconSrc: xaiIcon,
+  },
+  {
+    key: "groq",
+    label: "Groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+    iconSrc: groqIcon,
+  },
+  {
+    key: "mistral",
+    label: "Mistral",
+    baseUrl: "https://api.mistral.ai/v1",
+    model: "mistral-large-latest",
+    iconSrc: mistralIcon,
+  },
+  {
+    key: "openrouter",
+    label: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    // 聚合路由的自动选型模型，按上游计费规则分发。
+    model: "openrouter/auto",
+    iconSrc: openrouterIcon,
+  },
+  {
+    key: "ollama",
+    label: "Ollama（本地）",
+    baseUrl: "http://localhost:11434/v1",
+    // 本地模型的常用占位；用户按已 pull 的模型改。
+    model: "qwen3:8b",
+    iconSrc: ollamaIcon,
+  },
+  { key: "custom", label: "自定义", baseUrl: null, model: "", iconSrc: null },
 ];
 
 /** 内置本地 embedding 模型（固定，无配置面；仅供提示文案展示）。 */
 const LOCAL_EMBED_MODEL = "bge-small-zh-v1.5";
 
+/** 由当前 baseUrl 反查命中的预设（未命中 → null，即自定义）。 */
+function presetFor(baseUrl: string): (typeof LLM_PRESETS)[number] | null {
+  return LLM_PRESETS.find((p) => p.baseUrl && p.baseUrl === baseUrl) ?? null;
+}
+
 /** 由当前 baseUrl 反查命中的预设 key（未命中 → 「自定义」）。 */
 function presetKeyFor(baseUrl: string): string {
-  return (
-    LLM_PRESETS.find((p) => p.baseUrl && p.baseUrl === baseUrl)?.key ?? "custom"
-  );
+  return presetFor(baseUrl)?.key ?? "custom";
+}
+
+/** 卡片标题（对齐 joybuddy ModelCard 的 entry.name）：baseUrl 命中预设用预设名，
+ *  未命中读作自定义服务。 */
+function presetLabelFor(baseUrl: string): string {
+  return presetFor(baseUrl)?.label ?? "自定义服务";
+}
+
+/** 卡片圆标图标：命中预设用其品牌图标，未命中（自定义）回退到 API 图标。 */
+function presetIconFor(baseUrl: string): string | null {
+  return presetFor(baseUrl)?.iconSrc ?? null;
 }
 
 /** WorkBuddy-style section: muted heading + a stack of white cards below it. */
@@ -338,9 +460,25 @@ function FormField({
   );
 }
 
-/** "Common" pane: placeholder — items to be added later. */
+/** "Common" pane: 常规分组。语言项目前只支持简体中文（后续多语言时在此追加选项），
+ *  界面文案尚未接入 i18n，选择仅作占位展示。 */
 function CommonPane() {
-  return null;
+  const [language, setLanguage] = useState("zh-CN");
+  return (
+    <SettingsSection title="常规">
+      <SettingRow
+        title="语言"
+        control={
+          <Select
+            value={language}
+            onChange={setLanguage}
+            className="w-40"
+            options={[{ value: "zh-CN", label: "简体中文" }]}
+          />
+        }
+      />
+    </SettingsSection>
+  );
 }
 
 /** "Model" pane: a library of model-service configs (对齐 joybuddy — 添加多个模型，
@@ -355,14 +493,12 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
    *  `orig` is the snapshot for dirty detection. */
   const [draft, setDraft] = useState<{
     id?: string;
-    protocol: "minimax" | "openai";
     baseUrl: string;
     model: string;
     apiKey: string;
     apiKeyTouched: boolean;
     hasKey: boolean;
     orig: {
-      protocol: "minimax" | "openai";
       baseUrl: string;
       model: string;
     };
@@ -386,14 +522,12 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
 
   const openAdd = () => {
     setDraft({
-      protocol: "openai",
       baseUrl: "",
       model: "",
       apiKey: "",
       apiKeyTouched: false,
       hasKey: false,
       orig: {
-        protocol: "openai",
         baseUrl: "",
         model: "",
       },
@@ -403,14 +537,12 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
   const openEdit = (m: api.ModelEntry) => {
     setDraft({
       id: m.id,
-      protocol: m.provider,
       baseUrl: m.baseUrl,
       model: m.model,
       apiKey: "",
       apiKeyTouched: false,
       hasKey: m.hasApiKey,
       orig: {
-        protocol: m.provider,
         baseUrl: m.baseUrl,
         model: m.model,
       },
@@ -438,7 +570,6 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
       const res = await api.saveModel(
         {
           id: draft.id,
-          provider: draft.protocol,
           baseUrl: url,
           model: name,
         },
@@ -489,8 +620,7 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
   const presetKey = draft ? presetKeyFor(draft.baseUrl) : "custom";
   const dirty =
     !!draft &&
-    (draft.protocol !== draft.orig.protocol ||
-      draft.baseUrl.trim() !== draft.orig.baseUrl.trim() ||
+    (draft.baseUrl.trim() !== draft.orig.baseUrl.trim() ||
       draft.model.trim() !== draft.orig.model.trim() ||
       draft.apiKeyTouched);
 
@@ -500,11 +630,11 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
   return (
     <div className="flex flex-col gap-5">
       {mode === "local" && (
-        <SettingsSection title="模型服务">
+        <SettingsSection>
           {/* 顶部卡片（对齐记忆采集）：标题 + 描述在卡内，添加按钮在右侧。 */}
           <SettingRow
             title="模型服务"
-            desc="可添加多个模型配置，点击下方卡片编辑，「设为使用中」后即刻生效"
+            desc="可添加多个模型配置，点击下方卡片编辑，打开卡片右侧开关后即刻生效"
             control={
               <Button
                 type="primary"
@@ -520,75 +650,111 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
           {models?.length === 0 && (
             <p className="m-0 px-1 text-xs text-muted">
               还没有添加模型。不加也可以用：语义检索默认走内置本地 Embedding（
-              {LOCAL_EMBED_MODEL}），添加模型服务只是为了启用 LLM 相关功能（如日志回填）。
+              {LOCAL_EMBED_MODEL}），添加模型服务只是为了启用 LLM
+              相关功能（如日志回填）。
             </p>
           )}
 
-          {/* 模型列表：整卡可点进编辑；使用中的模型带绿标，其余可一键切换。 */}
-          {models?.map((m) => (
-            <div
-              key={m.id}
-              className="cursor-pointer overflow-hidden rounded-xl bg-white transition-shadow hover:shadow-sm"
-              onClick={() => openEdit(m)}
-            >
-              <div className="flex items-center gap-6 px-5 py-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-medium text-fg">
-                      {m.provider === "openai"
-                        ? "OpenAI 兼容服务"
-                        : "MiniMax 服务"}
-                    </span>
-                    {m.id === activeId && (
-                      <Tag
-                        bordered={false}
-                        color="green"
-                        className="m-0 shrink-0"
-                      >
-                        使用中
-                      </Tag>
+          {/* 模型列表（对齐 joybuddy ModelCard 两段式布局）：上段圆形图标 + 标题/
+              使用中标 + model id + 右侧「生效」开关（同库只能开一个）；dashed 分隔
+              的 footer 放服务地址，删除收进右侧三点菜单。整卡可点进编辑。 */}
+          {models?.map((m) => {
+            const isActive = m.id === activeId;
+            return (
+              <div
+                key={m.id}
+                className="model-card cursor-pointer rounded-xl bg-white transition-shadow"
+                onClick={() => openEdit(m)}
+              >
+                <div className="flex items-center gap-3.5 px-4 py-3.5">
+                  {/* 圆形 accent 图标：命中预设用其品牌图标，自定义回退 API 图标。 */}
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--ant-color-info-text-bg)">
+                    {presetIconFor(m.baseUrl) ? (
+                      <img
+                        src={presetIconFor(m.baseUrl)!}
+                        alt=""
+                        aria-hidden
+                        draggable={false}
+                        className="h-[22px] w-[22px] rounded object-contain select-none"
+                      />
+                    ) : (
+                      <ApiOutlined className="text-[18px] text-(--ant-color-info-text)" />
                     )}
-                    <Tag bordered={false} className="m-0 shrink-0 text-muted">
-                      {m.model}
-                    </Tag>
                   </div>
-                  <div className="mt-0.5 text-xs text-muted">
-                    {m.hasApiKey ? "API Key 已配置" : "未配置 API Key"}
+
+                  {/* 中段：标题 + 使用中标 + model id */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-fg">
+                        {presetLabelFor(m.baseUrl)}
+                      </span>
+                      {isActive && (
+                        <Tag
+                          bordered={false}
+                          color="green"
+                          className="m-0 shrink-0 text-[10px]"
+                        >
+                          使用中
+                        </Tag>
+                      )}
+                    </div>
+                    <div className="truncate text-xs text-muted">
+                      {m.model || "(未设置模型名)"}
+                    </div>
                   </div>
+
+                  {/* 「生效」开关：同库只能有一个开启（使用中常亮实心金星的旧交互
+                      已移除）；打开即 activate（主进程热切换），关闭无效——切换
+                      生效模型只能通过打开另一张卡的开关。 */}
+                  <Switch
+                    checked={isActive}
+                    className="shrink-0 self-center"
+                    onChange={(next) => {
+                      if (next) void activate(m);
+                    }}
+                    onClick={(_, e) => e.stopPropagation()}
+                  />
                 </div>
-                <div
-                  className="flex shrink-0 items-center gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {m.id !== activeId && (
-                    <Button size="small" onClick={() => void activate(m)}>
-                      设为使用中
-                    </Button>
-                  )}
-                  <Popconfirm
-                    title="删除该模型配置？使用中的配置不受影响。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => void remove(m)}
+
+                {/* dashed 分隔 + footer：服务地址 + API Key 状态 + 右侧三点菜单 */}
+                <div className="flex flex-wrap items-center gap-3.5 border-0 border-t border-dashed border-line px-4 pb-3.5 pt-2.5 text-xs text-muted">
+                  <span className="inline-flex min-w-0 items-center gap-1 overflow-hidden">
+                    <LinkOutlined className="shrink-0" />
+                    <span className="max-w-[320px] truncate">
+                      {m.baseUrl || "未设置服务地址"}
+                    </span>
+                  </span>
+                  <Dropdown
+                    trigger={["click"]}
+                    placement="leftBottom"
+                    menu={{
+                      items: [
+                        {
+                          key: "delete",
+                          icon: <DeleteOutlined />,
+                          label: "删除",
+                          danger: true,
+                        },
+                      ],
+                      onClick: ({ key, domEvent }) => {
+                        domEvent.stopPropagation();
+                        if (key === "delete") void remove(m);
+                      },
+                    }}
                   >
                     <Button
                       type="text"
                       size="small"
-                      icon={<CloseOutlined />}
-                      aria-label={`删除 ${m.model}`}
+                      className="ml-auto shrink-0"
+                      icon={<EllipsisOutlined />}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`更多操作 ${m.model}`}
                     />
-                  </Popconfirm>
+                  </Dropdown>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 border-0 border-t border-dashed border-line px-5 py-2.5 font-mono text-[11px] text-muted">
-                <LinkOutlined className="shrink-0" />
-                <span className="truncate">
-                  {m.baseUrl || "未设置服务地址"}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </SettingsSection>
       )}
 
@@ -623,33 +789,32 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
                   const preset = LLM_PRESETS.find((p) => p.key === key);
                   setDraft({
                     ...draft,
-                    // 切到自定义时清空 Base URL 让用户手填；命中预设则自动带入并同步协议。
+                    // 切到自定义时清空 Base URL 让用户手填；命中预设则自动带入
+                    // baseUrl 和该服务的默认模型名。
                     baseUrl: preset?.baseUrl || "",
-                    ...(preset?.protocol ? { protocol: preset.protocol } : {}),
+                    model: preset?.model || "",
                   });
                 }}
+                // 下拉选项与选中值都带品牌图标（对齐 joybuddy 的 ModelForm）。
                 options={LLM_PRESETS.map((p) => ({
                   value: p.key,
-                  label: p.label,
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      {p.iconSrc ? (
+                        <img
+                          src={p.iconSrc}
+                          alt=""
+                          aria-hidden
+                          draggable={false}
+                          className="h-4 w-4 rounded-xs object-contain select-none"
+                        />
+                      ) : (
+                        <ApiOutlined className="text-[14px] text-muted" />
+                      )}
+                      <span>{p.label}</span>
+                    </span>
+                  ),
                 }))}
-                className="w-full"
-              />
-            </FormField>
-
-            <FormField
-              label="接口协议"
-              desc="MiniMax 用私有协议；其余 OpenAI 兼容服务选 OpenAI"
-            >
-              <Select
-                value={draft.protocol}
-                onChange={(p: "minimax" | "openai") => {
-                  // 协议决定请求格式（MiniMax 私有协议走 mem0 原生 provider）。
-                  setDraft({ ...draft, protocol: p });
-                }}
-                options={[
-                  { value: "minimax", label: "MiniMax（私有协议）" },
-                  { value: "openai", label: "OpenAI 兼容（标准接口直连）" },
-                ]}
                 className="w-full"
               />
             </FormField>
@@ -661,38 +826,15 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
                   onChange={(e) =>
                     setDraft({ ...draft, baseUrl: e.target.value })
                   }
-                  placeholder={
-                    draft.protocol === "minimax"
-                      ? "https://api.minimax.cn/v1"
-                      : "https://api.openai.com/v1"
-                  }
+                  placeholder="https://api.openai.com/v1"
                   allowClear
                   autoComplete="off"
                   spellCheck={false}
                 />
               </FormField>
             )}
-            <FormField label="模型名">
-              <Input
-                value={draft.model}
-                onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                placeholder={
-                  draft.protocol === "minimax" ? "MiniMax-M2.7" : "gpt-5-mini"
-                }
-                allowClear
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </FormField>
 
-            <FormField
-              label="API Key"
-              desc={
-                draft.hasKey
-                  ? "已保存，留空并保存即清除"
-                  : "可留空——语义检索用内置本地 Embedding；Key 只用于日志回填等 LLM 功能"
-              }
-            >
+            <FormField label="API Key">
               <Input.Password
                 value={draft.apiKey}
                 onChange={(e) =>
@@ -704,6 +846,17 @@ function GeneralPane({ onNotify }: { onNotify: Notify }) {
                 }
                 placeholder={draft.hasKey ? "••••••••" : "sk-..."}
                 autoComplete="new-password"
+              />
+            </FormField>
+
+            <FormField label="模型名">
+              <Input
+                value={draft.model}
+                onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                placeholder={presetFor(draft.baseUrl)?.model || "gpt-5-mini"}
+                allowClear
+                autoComplete="off"
+                spellCheck={false}
               />
             </FormField>
           </div>
@@ -885,7 +1038,6 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
   const [hasRemoteToken, setHasRemoteToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [llm, setLlm] = useState<{
-    protocol: "minimax" | "openai";
     baseUrl: string;
     model: string;
   } | null>(null);
@@ -898,7 +1050,6 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
         setRemoteUrl(s.remoteUrl);
         setHasRemoteToken(s.hasRemoteToken);
         setLlm({
-          protocol: s.provider,
           baseUrl: s.baseUrl,
           model: s.model,
         });
@@ -914,7 +1065,14 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
     const prev = mode;
     setMode(next);
     try {
-      await api.saveSettings(llm.baseUrl, null, llm.model, llm.protocol, next, remoteUrl, null);
+      await api.saveSettings(
+        llm.baseUrl,
+        null,
+        llm.model,
+        next,
+        remoteUrl,
+        null,
+      );
       onNotify(
         next === "remote" ? "已切换到远程记忆服务" : "已切换回本地记忆服务",
       );
@@ -928,7 +1086,14 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
   const saveRemoteUrl = async () => {
     if (!llm) return;
     try {
-      await api.saveSettings(llm.baseUrl, null, llm.model, llm.protocol, "remote", remoteUrl, null);
+      await api.saveSettings(
+        llm.baseUrl,
+        null,
+        llm.model,
+        "remote",
+        remoteUrl,
+        null,
+      );
     } catch (e) {
       onNotify(`保存失败: ${e}`, "error");
     }
@@ -941,7 +1106,14 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
     // a previously-set token is an explicit clear (null = keep in the IPC contract).
     if (!t && !hasRemoteToken) return;
     try {
-      await api.saveSettings(llm.baseUrl, null, llm.model, llm.protocol, "remote", remoteUrl, t ? t : null);
+      await api.saveSettings(
+        llm.baseUrl,
+        null,
+        llm.model,
+        "remote",
+        remoteUrl,
+        t ? t : null,
+      );
       if (t) {
         setHasRemoteToken(true);
         setRemoteToken("");
@@ -969,7 +1141,9 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
         onNotify(r.error ?? "连接失败", "error");
         return;
       }
-      onNotify(`连接成功（服务端 Embedding：${r.embedModel ?? "内置本地模型"}）`);
+      onNotify(
+        `连接成功（服务端 Embedding：${r.embedModel ?? "内置本地模型"}）`,
+      );
     } catch (e) {
       onNotify(`测试失败: ${e}`, "error");
     } finally {
@@ -978,7 +1152,7 @@ function DataPane({ onNotify }: { onNotify: Notify }) {
   };
 
   return (
-    <SettingsSection title="记忆存储">
+    <SettingsSection>
       {/* 本地子进程（默认，数据在 userData）或用户自部署的 server/ 远程服务。两种模式
           共用同一套 HTTP 客户端，只是地址不同；切换即时保存，失败回滚。 */}
       <SettingRow
@@ -1360,13 +1534,6 @@ function ConnectorsPane({ onNotify }: { onNotify: Notify }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="m-0 mt-1 text-xs leading-5 text-muted">
-        将 Knot 注册为各 Agent 的 MCP Server，Agent 会话内即可通过{" "}
-        <code>recall_memories</code> / <code>list_projects</code>
-        读取当前项目的共享记忆；开关写入各 Agent
-        的用户级配置（写入前自动备份），生效方式见各卡片说明。
-      </p>
-
       {CONNECTORS.map((c) => (
         <div key={c.agent} className={cx(CARD)}>
           <AgentIcon agent={c.agent} size={32} />
@@ -1401,8 +1568,9 @@ const FEEDBACK_URL = `${GITHUB_URL}/issues/new`;
  *  with the repo link + copyright (aligned with manta-compare's about page). */
 function AboutPane() {
   return (
-    // min-h-full + mt-auto: pin the footer to the bottom of the visible panel (the panel content area is the scroll container).
-    <div className="flex min-h-full flex-col">
+    // min-h-full + justify-center: the whole block (content + footer, original
+    // spacing) centers vertically in the scroll area.
+    <div className="flex min-h-full flex-col justify-center">
       <div className="flex flex-col items-center gap-3 py-14">
         <img
           src={appIcon}
@@ -1422,7 +1590,7 @@ function AboutPane() {
       </div>
 
       {/* Footer: repo link + copyright. */}
-      <div className="mt-auto flex flex-col items-center gap-1.5 pb-2">
+      <div className="flex flex-col items-center gap-1.5 pb-2">
         <button
           type="button"
           className="flex items-center gap-1.5 text-[12px] text-muted bg-transparent border-0 cursor-pointer transition-colors hover:text-accent"

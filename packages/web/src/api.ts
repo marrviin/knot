@@ -228,7 +228,6 @@ export const mcpStatus = (agent: ConnectorAgent) =>
 // ---------- Settings (memory service connection) ----------
 
 export interface LlmSettings {
-  provider: "minimax" | "openai";
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
@@ -248,7 +247,6 @@ export const saveSettings = (
   baseUrl: string,
   apiKey: string | null,
   model: string,
-  provider: "minimax" | "openai",
   mode?: "local" | "remote",
   remoteUrl?: string,
   remoteToken?: string | null,
@@ -258,7 +256,6 @@ export const saveSettings = (
     baseUrl,
     apiKey,
     model,
-    provider,
     mode,
     remoteUrl,
     remoteToken,
@@ -282,7 +279,6 @@ export const testMemoryConnection = (url: string, token: string | null) =>
 /** One entry of the model library (apiKey is never sent to the renderer). */
 export interface ModelEntry {
   id: string;
-  provider: "minimax" | "openai";
   baseUrl: string;
   model: string;
   hasApiKey: boolean;

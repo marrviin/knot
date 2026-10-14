@@ -19,7 +19,7 @@
   --color-muted: var(--ant-color-text-tertiary, #8a8a8a);
   --color-hover: var(--ant-control-item-bg-hover, rgba(0, 0, 0, 0.04));
   --color-fill: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
-  --color-accent: var(--ant-color-primary, #3768fa);
+  --color-accent: var(--ant-color-primary, #C04A3E);
   --color-accent-hover: var(--ant-color-primary-hover, #5a86ff);
   --color-accent-bg: var(--ant-color-primary-bg, #eaf0ff);
 

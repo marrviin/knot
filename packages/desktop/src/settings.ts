@@ -1,19 +1,11 @@
-//! Settings: LLM extraction-layer config (mem0's LLM + embedding).
-//! Two protocol families are supported: MiniMax (private formats — LLM via mem0's
-//! minimax provider, embeddings translated by the local shim) and any OpenAI-compatible
-//! service (standard /chat/completions + /embeddings, no shim).
+//! Settings: LLM extraction-layer config (mem0's LLM).
+//! One protocol family: any OpenAI-compatible chat service (standard
+//! /chat/completions — OpenAI, MiniMax, DeepSeek, SiliconFlow, … all speak it).
 //! Stored in the mirror store's settings table; the API key is stored locally only —
 //! the renderer only ever receives a "is configured" flag.
 
 import type * as store from './store';
-import { PROVIDER_DEFAULTS, type LlmProvider } from '@knot/shared';
-
-// Shared contracts — re-exported so callers (and tests) keep importing them here.
-export type { LlmProvider };
-
-/** API protocol family. 'minimax' → MiniMax-native LLM + shim-translated embo-01
- *  embeddings; 'openai' → OpenAI-compatible chat + embeddings, passed straight through. */
-// (LlmProvider comes from @knot/shared)
+import { PROVIDER_DEFAULT } from '@knot/shared';
 
 /** Where the memory service runs: 'local' = Electron spawns the server/ bundle as
  *  a child process (default, data stays in userData); 'remote' = a user-deployed
@@ -22,7 +14,6 @@ export type { LlmProvider };
 export type MemoryMode = 'local' | 'remote';
 
 export interface LlmSettings {
-  provider: LlmProvider;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -34,7 +25,6 @@ export interface LlmSettings {
 }
 
 export interface LlmSettingsView {
-  provider: LlmProvider;
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
@@ -43,26 +33,10 @@ export interface LlmSettingsView {
   hasRemoteToken: boolean;
 }
 
-/** No stored provider → infer from the stored baseUrl (pre-provider installs pointed
- *  at MiniMax); a fresh install defaults to the neutral openai protocol. */
-function inferProvider(baseUrl: string | null): LlmProvider {
-  if (!baseUrl) return 'openai';
-  return /minimax\.(cn|io)/.test(baseUrl) ? 'minimax' : 'openai';
-}
-
 export function load(s: typeof store): LlmSettings {
-  const storedBase = s.getSetting('llm_base_url');
-  const provider: LlmProvider =
-    s.getSetting('llm_provider') === 'openai'
-      ? 'openai'
-      : s.getSetting('llm_provider') === 'minimax'
-        ? 'minimax'
-        : inferProvider(storedBase);
-  const d = PROVIDER_DEFAULTS[provider];
   return {
-    provider,
-    baseUrl: storedBase || d.baseUrl,
-    model: s.getSetting('llm_model') || d.model,
+    baseUrl: s.getSetting('llm_base_url') || PROVIDER_DEFAULT.baseUrl,
+    model: s.getSetting('llm_model') || PROVIDER_DEFAULT.model,
     apiKey: s.getSetting('llm_api_key') || '',
     mode: s.getSetting('llm_mode') === 'remote' ? 'remote' : 'local',
     remoteUrl: s.getSetting('llm_remote_url') || '',
@@ -80,7 +54,6 @@ export function isConfigured(s: LlmSettings): boolean {
 
 export function view(s: LlmSettings): LlmSettingsView {
   return {
-    provider: s.provider,
     baseUrl: s.baseUrl,
     model: s.model,
     hasApiKey: !!s.apiKey,
@@ -95,15 +68,12 @@ export function save(
   baseUrl: string,
   apiKey: string | null,
   model: string,
-  provider: LlmProvider,
   mode?: MemoryMode,
   remoteUrl?: string,
   remoteToken?: string | null,
 ): void {
-  const d = PROVIDER_DEFAULTS[provider];
-  s.setSetting('llm_provider', provider);
-  s.setSetting('llm_base_url', baseUrl.trim() || d.baseUrl);
-  s.setSetting('llm_model', model.trim() || d.model);
+  s.setSetting('llm_base_url', baseUrl.trim() || PROVIDER_DEFAULT.baseUrl);
+  s.setSetting('llm_model', model.trim() || PROVIDER_DEFAULT.model);
   s.setSetting('llm_mode', mode === 'remote' ? 'remote' : 'local');
   s.setSetting('llm_remote_url', (remoteUrl ?? '').trim());
   // remoteToken: undefined = keep the stored token (field untouched);
@@ -131,7 +101,6 @@ export function save(
  *  matches the active llm_* scalars (see activeIdOf) is the one in use. */
 export interface LlmModelEntry {
   id: string;
-  provider: LlmProvider;
   baseUrl: string;
   model: string;
   /** Stored locally only; the renderer only ever sees hasApiKey. */
@@ -152,7 +121,9 @@ export function loadModels(s: typeof store): LlmModelEntry[] {
           .filter((m) => m && typeof m.baseUrl === 'string' && typeof m.model === 'string')
           .map((m) => ({
             id: typeof m.id === 'string' && m.id ? m.id : `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            provider: m.provider === 'minimax' ? 'minimax' : 'openai',
+            // Legacy entries carried a provider field ('minimax' | 'openai'); the
+            // protocol split is gone — every service speaks OpenAI wire format now,
+            // so the stored value is simply dropped.
             baseUrl: m.baseUrl,
             model: m.model,
             apiKey: typeof m.apiKey === 'string' ? m.apiKey : '',
@@ -167,7 +138,6 @@ export function loadModels(s: typeof store): LlmModelEntry[] {
   if (cur.baseUrl && cur.apiKey && cur.model) {
     const seeded: LlmModelEntry = {
       id: 'model-seeded-active',
-      provider: cur.provider,
       baseUrl: cur.baseUrl,
       model: cur.model,
       apiKey: cur.apiKey,
@@ -189,7 +159,6 @@ export function saveModel(s: typeof store, entry: Partial<LlmModelEntry>): LlmMo
   const prev = models.find((m) => m.id === id);
   const next: LlmModelEntry = {
     id,
-    provider: entry.provider ?? prev?.provider ?? 'openai',
     baseUrl: (entry.baseUrl ?? prev?.baseUrl ?? '').trim(),
     model: (entry.model ?? prev?.model ?? '').trim(),
     // apiKey undefined = keep the stored key (field untouched); '' = clear; non-empty = replace.
@@ -208,12 +177,7 @@ export function deleteModel(s: typeof store, id: string): void {
  *  source of truth — edits via the old save path can't desync the flag. */
 export function activeIdOf(s: typeof store, models: LlmModelEntry[]): string | null {
   const cur = load(s);
-  const m = models.find(
-    (x) =>
-      x.provider === cur.provider &&
-      x.baseUrl === cur.baseUrl &&
-      x.model === cur.model,
-  );
+  const m = models.find((x) => x.baseUrl === cur.baseUrl && x.model === cur.model);
   return m?.id ?? null;
 }
 

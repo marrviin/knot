@@ -27,11 +27,9 @@ Electron 客户端默认以子进程方式在本地拉起它；用户也可以�
 | `KNOT_HOST` | `127.0.0.1` | 监听地址（Docker 里由镜像设为 `0.0.0.0`） |
 | `KNOT_DATA_DIR` | `./data` | 数据目录（vectors.db / history.db / embed-signature） |
 | `KNOT_TOKEN` | 空 | 访问令牌；远程部署务必设置 |
-| `KNOT_LLM_PROVIDER` | `openai` | `minimax` 或 `openai`（任意 OpenAI 兼容服务） |
-| `KNOT_LLM_BASE_URL` | 按 provider 默认 | API Base URL |
+| `KNOT_LLM_BASE_URL` | `https://api.openai.com/v1` | API Base URL（任意 OpenAI 兼容服务） |
 | `KNOT_LLM_API_KEY` | 空 | **必填**，未配置时服务可启动但不可提炼 |
-| `KNOT_LLM_MODEL` | 按 provider 默认 | 提炼模型 |
-| `KNOT_LLM_EMBED_MODEL` | 按 provider 默认 | 向量模型（换模型 = 换向量空间，需清库重导） |
+| `KNOT_LLM_MODEL` | `gpt-5-mini` | 提炼模型 |
 
 ## 本地开发
 
@@ -52,7 +50,6 @@ pnpm build:server
 docker build -t knot-server -f server/Dockerfile .
 docker run -d --name knot-memory -p 27184:27184 \
   -e KNOT_TOKEN=$(openssl rand -hex 16) \
-  -e KNOT_LLM_PROVIDER=minimax \
   -e KNOT_LLM_API_KEY=<你的key> \
   -v knot-data:/data \
   knot-server

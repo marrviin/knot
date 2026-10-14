@@ -23,7 +23,7 @@ const AGENT_ICONS: Record<string, { src?: string; color: string; glyph: string }
   codex: { src: codexSvg, color: '#10a37f', glyph: 'C' },
   hermes: { src: hermesSvg, color: '#8b5cf6', glyph: 'H' }, // purple (fallback only; src overrides)
   workbuddy: { src: workbuddyPng, color: '#10b981', glyph: 'W' }, // official app icon (256px, from WorkBuddy.app)
-  myagent: { color: '#3768fa', glyph: '自' }, // Knot primary blue
+  myagent: { color: '#C04A3E', glyph: '自' }, // Knot 朱砂红 primary
   user: { color: '#8e8e93', glyph: '人' }, // neutral gray
 };
 

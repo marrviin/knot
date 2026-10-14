@@ -76,7 +76,6 @@ export async function ensureMemory(userDataDir: string): Promise<Memory | null> 
     s.mode,
     s.remoteUrl,
     s.remoteToken,
-    s.provider,
     s.baseUrl,
     s.apiKey,
     s.model,
@@ -102,7 +101,6 @@ export async function ensureMemory(userDataDir: string): Promise<Memory | null> 
       const proc = await ensureServerProcess({
         userDataDir,
         llm: {
-          provider: s.provider,
           baseUrl: s.baseUrl,
           apiKey: s.apiKey,
           model: s.model,

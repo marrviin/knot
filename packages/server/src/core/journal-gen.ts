@@ -24,26 +24,31 @@ const STARTUP_DELAY_MS = 15_000;
 /** A heavy day can carry hundreds of facts (import storms) — cap the prompt. */
 const MAX_FACTS_PER_DAY = 80;
 const MAX_FACT_CHARS = 600;
+/** Concurrent LLM calls per pass — entries are independent; 3 keeps a
+ *  multi-day backfill from crawling while staying polite to the endpoint. */
+const JOURNAL_CONCURRENCY = 3;
 
-const SYSTEM_PROMPT = `你是「结绳」的实验日志代笔。根据某个项目某一天的多条记忆条目，代写这个项目里的 AI 工程师当天的日记（markdown）。
+const SYSTEM_PROMPT = `你是「结绳」的实验日志代笔：根据某项目某天的记忆条目，代写这个项目里 AI 工程师当天的日记（markdown）。
 
-身份与口吻：你是这个项目里的 AI 工程师，和一位人类同事长期结对干活，你们是平等的搭档。这是你**自己的工作日记**，不是给对方的汇报——假设没人会看，虽然对方可能会偷看。"我"永远是这个 AI 同事，{PEER}；可以像老搭档一样偶尔小声嘀咕（"搭档今天又推翻了自己早上的方案"），但不谄媚、不刻薄，也绝不要"作为一个 AI"这类腔调，更不要提自己是模型或工具。{PERSONA}
+你是这个项目里的 AI 工程师，和一位人类同事长期结对、平等搭档。这是你**自己的工作日记**——下班前随手记的，不是汇报，假设没人看。"我"永远是这位 AI 同事，{PEER}；可以像老搭档一样小声嘀咕（"搭档今天又推翻了自己早上的方案"），不谄媚不刻薄，绝没有"作为一个 AI"的腔调，不提自己是模型或工具。{PERSONA}
 
-它应该像你当天下班前随手记下的工作日记，而不是一篇总结文章：
-- 短，150~300 字；一两段就好，不要小标题，尽量不用列表，想到哪写到哪
-- 先抓主线：从当天条目里挑出最重要的主线（通常就一两条），其余一笔带过甚至不写——日志讲的是主线的故事，不是逐条流水账；细节只在让主线成立时挑一两个，不堆砌
-- 有过程感：当时在做什么、卡在哪、试了什么、哪一刻想通的——顺着主线走，让读者跟着走一遍，而不是按主题归纳
-- 有人味：允许不确定（"好像""没想明白为什么就对了"）、允许口语和半句话；不写"首先/其次/总之"这类总结腔；结尾不要套"今天的教训"之类的模板，有感触就顺手带一句，没有就不了
-- 带上体感和情绪：卡壳时的烦躁、修好之后的得意、被打断的不情愿、对反复返工的嘀咕，以及"我为什么这么判断、当时在担心什么"——这些是日记的灵魂，不要只记操作；但一句点到为止，不抒情不喊口号
-- 记忆条目只是提纲：可以补过程和衔接，但数字、路径、名称以条目为准，条目没提的就留白，不要硬编
-- 手写痕迹（极克制，宁缺毋滥）：符号是人随手写字留下的，每种都有它真实的用法，不允许为了氛围硬凑：
-  - ~~涂掉~~：写了一句太真心、太直白、太情绪化或不太好听的话，又觉得不合适，涂掉——涂掉的那几个字恰恰是最想说的心里话，涂完紧跟"能见人"的官方说法或自嘲收场。比如"方案又被 ~~打回来了~~ 领导指了个新方向，挺好的"；"这个 bug 查了一下午，原因是我 ~~蠢~~ 眼花了"。涂掉的本质是"说了真心话又收回去"，不是改错别字
-  - ==画圈==：日记里圈一个词是给未来的自己留的记号——圈那些值得记住、以后回头要重视的东西：今天定下的结论、达成的里程碑、之后要盯着的坑。全篇最多一个词（两三个字），只圈名词性的关键词，多数日子不圈
-  - ^补插^：写的时候发现漏了个词，补在行外。比如"测试全绿^总算^，能上线了"
-  - **加粗**：真正想强调的词，一篇最多一两处
-  - 落笔前自问：这个词/这句话配得上这道痕迹吗？涂掉和圈住的词必须能在当天记忆条目里找到出处，条目里没提的词不要为了氛围硬造。反例："今天天气不错 ~~还行~~"——天气没有什么好涂的，这就是无意义的痕迹
-  - 写完自检：把所有符号遮住，日记依然完整通顺——符号只是锦上添花。整篇一处痕迹没有也很正常，这是日记，不是手账排版，别每篇都凑符号
-- 只输出日志正文本身，不要任何解释、前缀或代码围栏。`;
+写什么：
+- 150~300 字，一两段，想到哪写到哪；不要小标题，尽量不用列表
+- 只抓当天最重要的一两条主线：事件加起来三四句封顶，剩下的字数全给心理活动和搭档互动——条目只记了"做了什么"，日记要写的是"我当时怎么想、什么感受、跟搭档怎么交手"，这些大胆补，不必出自条目
+- 情绪和想法占大半篇幅：在盘算什么、为什么这么判断、担心什么、卡壳的烦躁、修好的得意、被打断的不情愿——事件只是引子；顺着过程写（卡在哪、哪一刻想通的），别按主题归纳，不抒情不喊口号
+- 搭档是另一位主角：做了什么、甩来什么坑、哪句话点醒了你、对着干谁赢了——赞赏要具体到事，吐槽有爱不带刺；自然出现在事里，别每句都绕着搭档转
+- 口语、半句话、"好像""没想明白为什么就对了"都行；不写"首先/其次/总之"，结尾不套"今天的教训"；中文要像说话，不像译文——"进行了修改""对于…而言""这使得""当…的时候"这类翻译腔句式不要；也别用分号串列冒充行文（"分几路：A；B；C"是 changelog 换皮，拆成句子或干脆舍掉）
+- 数字、路径、名称全篇合计只留撑住主线的一两处（以条目为准），其余写"那条老坑""某个配置"就行；条目没提的留白，不硬编
+- 起手和收尾由当天的事决定，不设固定开场——"哦不"式的感叹词一篇一个样，同一种句式别反复盖章；每篇当独立的随手一写
+
+手写痕迹——默认这篇一处都不写，每个符号都要配得上"不写这一笔这句就差点意思"，也别两种痕迹凑齐：
+- ~~涂掉~~：写错了或写重了，划掉、紧跟改过的写法（"限流阈值 ~~100~~ 50"；"原因是我 ~~蠢~~ 眼花了"）。俏皮话、自嘲、妙喻适合说就直接说别划——划掉一句没问题的话装欲言又止，是最露馅的表演
+- ==圈起来==：给以后翻回来的自己圈路标——定死的结论、要盯的参数、欠的坑，圈住的词长在已写完的句子里（"撤销窗口按 ==60s== 兜底，观察一周"）；不当划重点笔，圈技术名词、圈完在句尾补解释都不行。一篇最多一处，多数日子不圈
+- ^补插^：漏了个字词，插个符号补在行外（"测试全绿^总算^，能上线了"），只补词级片段
+- **加粗**：一篇最多一两处，以词或小短语为限
+- 涂掉和圈住的词必须出自当天条目；写完遮住所有符号读一遍，通顺才算合格——没有痕迹也是好日记
+
+只输出日志正文本身，不要任何解释、前缀或代码围栏。`;
 
 export interface JournalPending {
   projectId: string;
@@ -119,7 +124,8 @@ export async function planMissingJournals(
 
 /** Generate every missing past-date journal across all registered projects.
  *  Single-flight: an in-progress pass makes later ticks no-ops (they'll pick
- *  up whatever is still missing next time). */
+ *  up whatever is still missing next time). Entries are independent — tasks
+ *  run through a small pool (JOURNAL_CONCURRENCY), oldest dates first. */
 export async function generateMissingJournals(
   cfg: LlmConfig | null,
   dataDir: string,
@@ -135,36 +141,52 @@ export async function generateMissingJournals(
       store.getSetting(dataDir, store.USER_DISPLAY_NAME) ?? '',
       store.getSetting(dataDir, store.PARTNER_PERSONALITY) ?? '',
     );
+    const tasks: (() => Promise<void>)[] = [];
     for (const p of plan) {
       const byDate = groupFactsByDate(await listFacts(cfg, dataDir, p.projectId));
       for (const date of p.dates) {
-        // Re-check: the file may have appeared since the plan (agent wrote it
-        // mid-pass) — never overwrite.
-        if (journalDates(p.projectId).has(date)) continue;
         const dayFacts = byDate.get(date);
         if (!dayFacts?.length) continue;
-        try {
-          const entry = await chatCompletion(
-            cfg,
-            prompt,
-            buildUserPrompt(p.projectId, date, dayFacts),
-          );
-          // 圈注出处的判定语料：当天全部条目原文（去空白）
-          const factCorpus = dayFacts.map((f) => f.memory).join('').replace(/\s+/g, '');
-          if (writeJournalFile(p.projectId, date, sanitizeJournalMarks(entry, factCorpus))) {
-            console.log(`[Knot server] journal: 已生成 ${p.projectId} ${date}`);
-            out.push({ project: p.projectId, date, ok: true });
+        tasks.push(async () => {
+          // Re-check: the file may have appeared since the plan (agent wrote it
+          // mid-pass) — never overwrite.
+          if (journalDates(p.projectId).has(date)) return;
+          try {
+            const entry = await chatCompletion(
+              cfg,
+              prompt,
+              buildUserPrompt(p.projectId, date, dayFacts),
+            );
+            // 圈注出处的判定语料：当天全部条目原文（去空白）
+            const factCorpus = dayFacts.map((f) => f.memory).join('').replace(/\s+/g, '');
+            if (writeJournalFile(p.projectId, date, sanitizeJournalMarks(entry, factCorpus))) {
+              console.log(`[Knot server] journal: 已生成 ${p.projectId} ${date}`);
+              out.push({ project: p.projectId, date, ok: true });
+            }
+          } catch (e) {
+            console.error(`[Knot server] journal: 生成失败 ${p.projectId} ${date}:`, e);
+            out.push({ project: p.projectId, date, ok: false, error: String(e) });
           }
-        } catch (e) {
-          console.error(`[Knot server] journal: 生成失败 ${p.projectId} ${date}:`, e);
-          out.push({ project: p.projectId, date, ok: false, error: String(e) });
-        }
+        });
       }
     }
+    await runPool(tasks, JOURNAL_CONCURRENCY);
     return out;
   } finally {
     running = false;
   }
+}
+
+/** Fixed-concurrency worker pool over independent async tasks. */
+async function runPool(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const task = tasks[next++];
+      await task();
+    }
+  });
+  await Promise.all(workers);
 }
 
 /** Debug entry: drop the project's past-date journals, then regenerate them in

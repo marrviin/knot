@@ -2,11 +2,11 @@
 //! local mode (Electron spawns it as a child process, passing the user's LLM
 //! settings through env) and remote mode (user-deployed Docker, env in compose).
 
-import { LOCAL_EMBED_MODEL, PROVIDER_DEFAULTS, embedSignatureOf, type LlmConfig, type LlmProvider } from '@knot/shared';
+import { LOCAL_EMBED_MODEL, PROVIDER_DEFAULT, embedSignatureOf, type LlmConfig } from '@knot/shared';
 
 // Shared contracts — memory-core.ts and app.ts keep importing them from './config'.
 export { embedSignatureOf, LOCAL_EMBED_MODEL };
-export type { LlmConfig, LlmProvider };
+export type { LlmConfig };
 
 export interface ServerConfig {
   host: string;
@@ -26,13 +26,10 @@ export interface ServerConfig {
  *  run locally (the bundled bge model), so the memory layer works with zero
  *  configuration; the API key only enables the chat side (journal backfill). */
 function llmFromEnv(env: NodeJS.ProcessEnv): LlmConfig {
-  const provider: LlmProvider = env.KNOT_LLM_PROVIDER === 'minimax' ? 'minimax' : 'openai';
-  const d = PROVIDER_DEFAULTS[provider];
   return {
-    provider,
-    baseUrl: (env.KNOT_LLM_BASE_URL ?? '').trim() || d.baseUrl,
+    baseUrl: (env.KNOT_LLM_BASE_URL ?? '').trim() || PROVIDER_DEFAULT.baseUrl,
     apiKey: (env.KNOT_LLM_API_KEY ?? '').trim(),
-    model: (env.KNOT_LLM_MODEL ?? '').trim() || d.model,
+    model: (env.KNOT_LLM_MODEL ?? '').trim() || PROVIDER_DEFAULT.model,
     embedModel: LOCAL_EMBED_MODEL,
   };
 }

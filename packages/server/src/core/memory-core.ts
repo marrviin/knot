@@ -7,8 +7,8 @@
 //! its mirror from it.
 //!
 //! Ported behaviors (unchanged from the original):
-//! - LLM: provider-configurable — MiniMax (mem0's native minimax provider) or any
-//!   OpenAI-compatible service. Optional: Knot's mem0 paths (infer:false add,
+//! - LLM: any OpenAI-compatible chat service (standard /chat/completions wire
+//!   format). Optional: Knot's mem0 paths (infer:false add,
 //!   update, search, delete, getAll) never call it — a placeholder config stands
 //!   in when no API key is set, so the memory layer works with zero configuration.
 //! - Embedding: always the bundled bge-small-zh-v1.5 ONNX model, served by a local
@@ -53,7 +53,7 @@ const QUERY_TIMEOUT_MS = 60_000;
  *  run locally, so this only ever fails on a broken install (model assets gone). */
 export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Promise<Memory | null> {
   if (!cfg) return null;
-  const key = `${cfg.provider}|${cfg.baseUrl}|${cfg.apiKey}|${cfg.model}|${cfg.embedModel}`;
+  const key = `${cfg.baseUrl}|${cfg.apiKey}|${cfg.model}|${cfg.embedModel}`;
   if (memory && currentKey === key) return memory;
   if (ensurePromise) return ensurePromise;
 
@@ -94,9 +94,10 @@ export async function ensureMemory(cfg: LlmConfig | null, dataDir: string): Prom
       // The chat LLM is real only when the user set a key; without one, mem0
       // still requires an llm block but Knot's paths never invoke it — stand in
       // a dead-port config so any accidental call fails loudly instead of hanging.
+      // (OpenAI-compatible wire format everywhere — see the LlmConfig contract.)
       const llm: MemoryConfig['llm'] = cfg.apiKey
         ? {
-            provider: cfg.provider,
+            provider: 'openai',
             config: { apiKey: cfg.apiKey, model: cfg.model, baseURL: cfg.baseUrl, maxTokens: 4000, temperature: 0 },
           }
         : {

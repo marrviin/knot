@@ -88,15 +88,15 @@
     line-height: 1.9;
     color: var(--jnl-red);
   }
-  /* 涂改（墨笔左右来回划）：逐行背景纹理 —— repeat-x 的笔触贴在每个行块上，
+  /* 涂改（两道杠划掉）：逐行背景纹理 —— repeat-x 的笔触贴在每个行块上，
      换行时每行各画各的（box-decoration-break: clone），不会连成一条斜贯两行的大线。
-     三道横向的线：整条只弯一两次、幅度不到 1px —— 是"画不直的手线"，不是波浪。 */
+     两道横向的线：整条只弯一两次、幅度不到 1px —— 是"画不直的手线"，不是波浪。 */
   .jnl-del {
     text-decoration: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='12' viewBox='0 0 26 12'%3E%3Cpath d='M0.5 3 Q9 2.1 16 3 Q22 3.7 25.5 2.8' fill='none' stroke='%233f4f6d' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M0.5 6.3 Q8 7.2 15 6.1 Q21 5.5 25.5 6.4' fill='none' stroke='%233f4f6d' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M1 9.5 Q9 8.7 17 9.7 Q23 10.2 25.5 9.2' fill='none' stroke='%233f4f6d' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='9' viewBox='0 0 26 9'%3E%3Cpath d='M0.5 2.6 Q9 1.7 16 2.6 Q22 3.3 25.5 2.4' fill='none' stroke='%233f4f6d' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M0.5 6.2 Q8 7.1 15 6 Q21 5.4 25.5 6.3' fill='none' stroke='%233f4f6d' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: repeat-x;
     background-position: 0 52%;
-    background-size: auto 0.62em;
+    background-size: auto 0.47em;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
   }

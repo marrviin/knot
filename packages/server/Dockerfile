@@ -5,7 +5,6 @@
 # 运行：
 #   docker run -d -p 27184:27184 \
 #     -e KNOT_TOKEN=<访问令牌> \
-#     -e KNOT_LLM_PROVIDER=minimax \
 #     -e KNOT_LLM_API_KEY=<key> \
 #     -v knot-data:/data \
 #     knot-server

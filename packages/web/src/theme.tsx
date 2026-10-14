@@ -17,9 +17,11 @@ export function ThemeProviders({ children }: { children: ReactNode }) {
         theme={{
           cssVar: { key: "knot" },
           token: {
-            // Seed colors aligned with manta-compare: accent blue + brand functional colors.
-            colorPrimary: "#3768fa",
-            colorInfo: "#3768fa",
+            // Seed colors: 朱砂红 primary — the red-pen mark IS the brand (圈住 =
+            // 打结 = 记住), so the primary voice and the journal's marks share one
+            // color. Functional colors stay antd-standard.
+            colorPrimary: "#C04A3E",
+            colorInfo: "#C04A3E",
             colorSuccess: "#00b26f",
             colorWarning: "#f08433",
             colorError: "#f33b50",

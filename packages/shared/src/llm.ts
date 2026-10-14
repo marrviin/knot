@@ -4,7 +4,7 @@
 //! server must stay deployable without the Electron tree, which is why this
 //! lives in the zero-dependency shared package.
 
-import type { LlmConfig, LlmProvider } from './types';
+import type { LlmConfig } from './types';
 
 /** The bundled local embedding model — served by the server process's local
  *  embedder (ONNX q8, ~24MB, packed into the installer; no network at runtime).
@@ -12,13 +12,10 @@ import type { LlmConfig, LlmProvider } from './types';
  *  memory content (中文 + code terms) works; C-MTEB beats e5-small at 1/5 the size. */
 export const LOCAL_EMBED_MODEL = 'bge-small-zh-v1.5';
 
-/** Chat-LLM provider defaults — consumed by the desktop settings UI and the
- *  server's env config alike. Embeddings have no provider defaults: they always
+/** Chat-LLM defaults (OpenAI-compatible) — consumed by the desktop settings UI
+ *  and the server's env config alike. Embeddings have no defaults: they always
  *  run locally. */
-export const PROVIDER_DEFAULTS: Record<LlmProvider, { baseUrl: string; model: string }> = {
-  minimax: { baseUrl: 'https://api.minimax.cn/v1', model: 'MiniMax-M2.7' },
-  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini' },
-};
+export const PROVIDER_DEFAULT = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini' };
 
 /** Identity of the embedding space. Embeddings always come from the bundled local
  *  model, so this is constant for a given app build — it only changes (and

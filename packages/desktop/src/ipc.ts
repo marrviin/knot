@@ -134,13 +134,12 @@ export function registerIpc(ctx: IpcContext): void {
       baseUrl: string,
       apiKey: string | null,
       model: string,
-      provider: "minimax" | "openai",
       mode?: "local" | "remote",
       remoteUrl?: string,
       remoteToken?: string | null,
     ) =>
       ok(() => {
-        settings.save(store, baseUrl, apiKey, model, provider, mode, remoteUrl, remoteToken);
+        settings.save(store, baseUrl, apiKey, model, mode, remoteUrl, remoteToken);
         // Any settings save takes effect immediately: rebuild watchers and import
         // pending existing content — no app restart needed. Fire-and-forget: the
         // import is minutes of embedding calls; progress events drive the UI.
@@ -162,9 +161,9 @@ export function registerIpc(ctx: IpcContext): void {
   // activate_model and by save_model when the edited entry is the active one.
   const applyLlmConfig = (
     apiKey: string | null,
-    entry: { provider: "minimax" | "openai"; baseUrl: string; model: string },
+    entry: { baseUrl: string; model: string },
   ): void => {
-    settings.save(store, entry.baseUrl, apiKey, entry.model, entry.provider);
+    settings.save(store, entry.baseUrl, apiKey, entry.model);
     // Same take-effect-immediately contract as save_settings (no app restart).
     watcher.rescan();
     void watcher
@@ -180,7 +179,6 @@ export function registerIpc(ctx: IpcContext): void {
       return {
         models: models.map((m) => ({
           id: m.id,
-          provider: m.provider,
           baseUrl: m.baseUrl,
           model: m.model,
           hasApiKey: !!m.apiKey,
@@ -194,7 +192,7 @@ export function registerIpc(ctx: IpcContext): void {
     "save_model",
     (
       _e,
-      entry: { id?: string; provider: "minimax" | "openai"; baseUrl: string; model: string },
+      entry: { id?: string; baseUrl: string; model: string },
       apiKey: string | null | undefined,
     ) =>
       ok(() => {

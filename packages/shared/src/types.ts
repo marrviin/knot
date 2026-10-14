@@ -2,13 +2,12 @@
 //! Previously duplicated across electron/mem0.ts and server/src/memory-core.ts
 //! (with "keep in sync" comments); this is now the single source of truth.
 
-/** LLM protocol family. 'minimax' → MiniMax-native LLM; 'openai' → OpenAI-compatible
- *  chat. Only the chat side is user-configurable — embeddings always run locally
- *  (the bundled bge model), so there is no embedding configuration surface. */
-export type LlmProvider = 'minimax' | 'openai';
-
+/** LLM config — OpenAI-compatible chat only. All mainstream services (OpenAI,
+ *  MiniMax, DeepSeek, SiliconFlow, …) speak the standard /chat/completions wire
+ *  format, so no private-protocol branch exists anymore. Only the chat side is
+ *  user-configurable — embeddings always run locally (the bundled bge model),
+ *  so there is no embedding configuration surface. */
 export interface LlmConfig {
-  provider: LlmProvider;
   baseUrl: string;
   apiKey: string;
   model: string;

@@ -26,7 +26,6 @@ import { log } from './log';
  *  pipeline). All fields optional in effect: embeddings run on the bundled local
  *  model regardless, and an empty apiKey just disables journal backfill. */
 export interface ChildLlmSettings {
-  provider: 'minimax' | 'openai';
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -120,7 +119,6 @@ export async function ensureServerProcess(opts: {
     KNOT_PORT: String(port),
     KNOT_TOKEN: token,
     KNOT_DATA_DIR: path.join(opts.userDataDir, 'mem0'),
-    KNOT_LLM_PROVIDER: opts.llm.provider,
     KNOT_LLM_BASE_URL: opts.llm.baseUrl,
     KNOT_LLM_API_KEY: opts.llm.apiKey,
     KNOT_LLM_MODEL: opts.llm.model,

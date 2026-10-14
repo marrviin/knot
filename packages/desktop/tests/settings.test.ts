@@ -23,28 +23,22 @@ describe('settings.save (API key three-state semantics)', () => {
   });
 
   it('null keeps the stored key (field untouched)', () => {
-    settings.save(s, 'http://x', null, 'm', 'minimax');
+    settings.save(s, 'http://x', null, 'm');
     expect(s.getSetting('llm_api_key')).toBe('old-key');
   });
 
   it("'' explicitly clears the key", () => {
-    settings.save(s, 'http://x', '', 'm', 'minimax');
+    settings.save(s, 'http://x', '', 'm');
     expect(s.getSetting('llm_api_key')).toBeNull();
   });
 
   it('a non-empty value replaces the key', () => {
-    settings.save(s, 'http://x', 'new-key', 'm', 'minimax');
+    settings.save(s, 'http://x', 'new-key', 'm');
     expect(s.getSetting('llm_api_key')).toBe('new-key');
   });
 
-  it('empty baseUrl/model fall back to defaults', () => {
-    settings.save(s, '', null, '', 'minimax');
-    expect(s.getSetting('llm_base_url')).toBe('https://api.minimax.cn/v1');
-    expect(s.getSetting('llm_model')).toBe('MiniMax-M2.7');
-  });
-
-  it('empty baseUrl/model fall back to the openai defaults when provider is openai', () => {
-    settings.save(s, '', null, '', 'openai');
+  it('empty baseUrl/model fall back to the openai defaults', () => {
+    settings.save(s, '', null, '');
     expect(s.getSetting('llm_base_url')).toBe('https://api.openai.com/v1');
     expect(s.getSetting('llm_model')).toBe('gpt-5-mini');
     // Embedding is not a stored setting anymore — it's always the bundled model.
@@ -52,41 +46,37 @@ describe('settings.save (API key three-state semantics)', () => {
   });
 });
 
-describe('provider config', () => {
+describe('llm config', () => {
   let s: ReturnType<typeof fakeStore>;
 
   beforeEach(() => {
     s = fakeStore();
   });
 
-  it('defaults to the openai protocol and zero-config on a fresh install', () => {
+  it('defaults to zero-config on a fresh install (no provider field anymore)', () => {
     const cfg = settings.load(s);
-    expect(cfg.provider).toBe('openai');
+    // The old protocol split is gone — LlmSettings carries no provider field.
+    expect((cfg as { provider?: unknown }).provider).toBeUndefined();
     // Embeddings always run on the bundled local model — no key needed.
     expect(settings.isConfigured(cfg)).toBe(true);
   });
 
-  it('infers the minimax provider from a stored pre-provider baseUrl', () => {
-    // Installs before the provider field existed: only llm_base_url was written.
-    s.setSetting('llm_base_url', 'https://api.minimax.cn/v1');
-    expect(settings.load(s).provider).toBe('minimax');
-    s.setSetting('llm_base_url', 'https://api.minimax.io/v1');
-    expect(settings.load(s).provider).toBe('minimax');
-    s.setSetting('llm_base_url', 'https://api.siliconflow.cn/v1');
-    expect(settings.load(s).provider).toBe('openai');
+  it('ignores a legacy stored provider setting (pre-protocol-removal installs)', () => {
+    s.setSetting('llm_provider', 'minimax');
+    const cfg = settings.load(s);
+    expect((cfg as { provider?: unknown }).provider).toBeUndefined();
   });
 
-  it('round-trips an openai provider with a custom base url and model', () => {
-    settings.save(s, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B', 'openai');
+  it('round-trips a custom base url and model', () => {
+    settings.save(s, 'https://api.siliconflow.cn/v1', 'sk-x', 'Qwen/Qwen3-32B');
     const cfg = settings.load(s);
-    expect(cfg.provider).toBe('openai');
     expect(cfg.baseUrl).toBe('https://api.siliconflow.cn/v1');
     expect(cfg.model).toBe('Qwen/Qwen3-32B');
   });
 
   it('local mode is always configured, even with no key (embeddings are bundled)', () => {
     // No API key anywhere in the store — the memory layer must still be usable.
-    settings.save(s, 'https://api.siliconflow.cn/v1', '', 'Qwen/Qwen3-32B', 'openai');
+    settings.save(s, 'https://api.siliconflow.cn/v1', '', 'Qwen/Qwen3-32B');
     expect(settings.isConfigured(settings.load(s))).toBe(true);
   });
 });
