@@ -1,0 +1,33 @@
+{
+  "name": "@journal/desktop",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Journal Electron 桌面端：主进程 + preload（记忆服务以 HTTP 客户端方式接入）",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "build": "pnpm build:main",
+    "build:main": "rm -rf dist-electron && esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --outdir=dist-electron --out-extension:.js=.cjs --external:electron --external:better-sqlite3 --external:chokidar",
+    "start": "electron .",
+    "rebuild:electron": "node scripts/rebuild-sqlite-electron.mjs",
+    "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
+    "dist": "electron-builder --mac"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "@journal/shared": "workspace:*",
+    "better-sqlite3": "^12.4.1",
+    "chokidar": "^4.0.3",
+    "onnxruntime-node": "^1.30.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,1301 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Journal memory service",
+    "description": "记忆服务：facts 增删改查 + 语义搜索 + 项目注册表",
+    "version": "0.2.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "ready"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "ready": {
+                      "type": "boolean"
+                    },
+                    "embedSignature": {
+                      "type": "string"
+                    },
+                    "embedModel": {
+                      "type": "string"
+                    },
+                    "notice": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ingest": {
+      "post": {
+        "operationId": "ingestFacts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId",
+                  "raw"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "raw": {
+                    "type": "string"
+                  },
+                  "meta": {
+                    "type": "object",
+                    "properties": {
+                      "agent": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "preferExisting": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sourceMtime": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "report",
+                    "facts"
+                  ],
+                  "properties": {
+                    "report": {
+                      "type": "object",
+                      "required": [
+                        "added",
+                        "updated",
+                        "deleted"
+                      ],
+                      "properties": {
+                        "added": {
+                          "type": "number"
+                        },
+                        "updated": {
+                          "type": "number"
+                        },
+                        "deleted": {
+                          "type": "number"
+                        },
+                        "notice": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "memory"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "memory": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "createdAt": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/facts": {
+      "post": {
+        "operationId": "addFact",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId",
+                  "content"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "report",
+                    "facts"
+                  ],
+                  "properties": {
+                    "report": {
+                      "type": "object",
+                      "required": [
+                        "added",
+                        "updated",
+                        "deleted"
+                      ],
+                      "properties": {
+                        "added": {
+                          "type": "number"
+                        },
+                        "updated": {
+                          "type": "number"
+                        },
+                        "deleted": {
+                          "type": "number"
+                        },
+                        "notice": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "memory"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "memory": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "createdAt": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/facts/{id}": {
+      "put": {
+        "operationId": "updateFact",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFact",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/facts": {
+      "get": {
+        "operationId": "listFacts",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "facts"
+                  ],
+                  "properties": {
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "memory"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "memory": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "createdAt": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/count": {
+      "get": {
+        "operationId": "countFacts",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "agent",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "count"
+                  ],
+                  "properties": {
+                    "count": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "projects"
+                  ],
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "factCount",
+                          "lastUpdated"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "factCount": {
+                            "type": "number"
+                          },
+                          "lastUpdated": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerProject",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "factCount",
+                    "lastUpdated"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "factCount": {
+                      "type": "number"
+                    },
+                    "lastUpdated": {
+                      "type": "number",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}": {
+      "delete": {
+        "operationId": "removeProject",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "post": {
+        "operationId": "searchMemories",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId",
+                  "query"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "string"
+                  },
+                  "topK": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hits"
+                  ],
+                  "properties": {
+                    "hits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "memory",
+                          "score"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "memory": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          },
+                          "agent": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/journals": {
+      "get": {
+        "operationId": "listJournals",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "journals"
+                  ],
+                  "properties": {
+                    "journals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "date",
+                          "content",
+                          "mtime"
+                        ],
+                        "properties": {
+                          "date": {
+                            "type": "string"
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "mtime": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/journals/pending": {
+      "get": {
+        "operationId": "getJournalPending",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "projectId",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pending"
+                  ],
+                  "properties": {
+                    "pending": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "projectId",
+                          "name",
+                          "dates"
+                        ],
+                        "properties": {
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "dates": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/journals/generate": {
+      "post": {
+        "operationId": "generateJournals",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/journals/regenerate": {
+      "post": {
+        "operationId": "regenerateJournals",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/personalization": {
+      "get": {
+        "operationId": "getPersonalization",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "displayName",
+                    "personality"
+                  ],
+                  "properties": {
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "personality": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            ""
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ctrl"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "atm-er"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "dior-s"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "boss"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "than-k"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "oh-no"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "gogo"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "sexy"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "love-r"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mum"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "fake"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ojbk"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "malo"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "joker"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "woc"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "thin-k"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "shit"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "zzzz"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "poor"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "monk"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "imsb"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "solo"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "fuck"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "dead"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "imfw"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "hhhh"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "drunk"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "savePersonalization",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "displayName",
+                  "personality"
+                ],
+                "properties": {
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "personality": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          ""
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "ctrl"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "atm-er"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "dior-s"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "boss"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "than-k"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "oh-no"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "gogo"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "sexy"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "love-r"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "mum"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "fake"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "ojbk"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "malo"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "joker"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "woc"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "thin-k"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "shit"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "zzzz"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "poor"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "monk"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "imsb"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "solo"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "fuck"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "dead"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "imfw"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "hhhh"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "drunk"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "servers": []
+}

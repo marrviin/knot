@@ -1,0 +1,34 @@
+{
+  "name": "@journal/web",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Journal 渲染层（React + antd + Vite），构建产物直接输出到 @journal/desktop/dist 供打包",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "generate:api": "openapi-ts -i ../server/openapi.json -o src/client",
+    "fetch:font": "node scripts/fetch-font.mjs"
+  },
+  "dependencies": {
+    "@ant-design/cssinjs": "^2.1.2",
+    "@ant-design/icons": "^6.3.2",
+    "@hey-api/client-fetch": "^0.13.1",
+    "@journal/shared": "workspace:*",
+    "antd": "^6.6.2",
+    "classnames": "^2.5.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.90.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

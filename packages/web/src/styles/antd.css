@@ -1,0 +1,96 @@
+/* ── Third-party overrides: antd ──────────────────────────────────────────────
+ * Selectors that reach into antd's internal nodes must live here (those nodes
+ * aren't rendered by us and can't be expressed with Tailwind classes). The block
+ * sits inside `@layer components`, after antd's cssinjs layer, so it applies
+ * reliably without !important. */
+
+/* Shared Menu skin (sidebar project list / settings modal left nav) ────────────
+ * Both UIs render an antd Menu wrapped in <ConfigProvider theme={menuSkinTheme}>
+ * (src/menu-skin.ts): row height, hover/selected backgrounds and corner radius come
+ * from those component tokens (referencing global antd CSS variables, following dark
+ * mode automatically). Rules the Menu has no token for live here, all scoped under
+ * .pc-menu-skin. */
+@layer components {
+  /* Meta info at the row's right edge (project fact count); hidden on hover to make
+   * room for the actions on the right.
+   * Uses visibility (not display) to keep the space reserved, so text won't slide
+   * underneath it.
+   * Transitions resolve at the target state, and a delay only lives on its own side:
+   * hover-in → meta hides after the same 0.25s as the three-dot fade-in; hover-out →
+   * meta returns (0.15s delay) only after the three-dot's 0.15s fade-out. The two never overlap. */
+  .pc-menu-skin .pc-menu-meta {
+    flex: none;
+    padding-left: 6px;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--color-muted);
+    white-space: nowrap;
+    transition: visibility 0s 0.15s;
+  }
+  .pc-menu-skin .ant-menu-item:hover .pc-menu-meta {
+    visibility: hidden;
+    transition: visibility 0s 0.25s;
+  }
+  /* Ellipsis trigger at the row's right edge (remove-project menu): absolutely positioned
+   * at the row's right edge (.ant-menu-item li is position:relative), transparent by default,
+   * fades in on row hover and out immediately — no flicker when sweeping across rows. */
+  .pc-menu-skin .pc-menu-more {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .pc-menu-skin .ant-menu-item:hover .pc-menu-more {
+    opacity: 0.6;
+    transition: opacity 0.15s ease 0.25s;
+  }
+  .pc-menu-skin .pc-menu-more:hover {
+    opacity: 1;
+    transition: opacity 0.15s ease;
+  }
+  /* Row geometry: rc-menu stamps each inline item with an inline
+   * `padding-left: <inlineIndent>*level` style (24px at root level); ordinary rules
+   * can't beat inline styles, so !important pushes it back.
+   * Corner radius is handled here too: the itemBorderRadius token in antd v6 is a
+   * number type and can't take a CSS variable — use borderRadiusLG directly. */
+  .pc-menu-skin .ant-menu-item {
+    padding-inline: 8px !important;
+    border-radius: 8px;
+  }
+  /* Row spacing: 4px of breathing room between rows (first row touches the container's pt, last row its pb). */
+  .pc-menu-skin .ant-menu-item + .ant-menu-item {
+    margin-block-start: 4px;
+  }
+  /* Title content: a min-width-0, overflow-hidden flex box. This is the layout context
+   * the right-side ellipsis/count depend on; without it, long project names would break the row. */
+  .pc-menu-skin .ant-menu-title-content {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1;
+  }
+}
+
+/* ── Frosted-glass dropdown menu ──────────────────────────────────────────────
+   Same treatment as the settings modal: the popup menu is semi-transparent with
+   backdrop-blur over the content behind it, overriding the Menu's own colorBgElevated
+   background. Reuses the --pc-glass-bg token to keep the two layers in sync. */
+.ant-dropdown .ant-dropdown-menu {
+  background: var(--pc-glass-bg, rgba(250, 250, 250, 0.9));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+}
+
+/* ── Settings window: gray page + white cards (WorkBuddy style) ───────────────
+   The title strip at the top of the content area doubles as the drag region for
+   the macOS hidden-inset window, as does the sidebar's top spacer (above the
+   search box, where the traffic lights sit). */
+.pc-settings-header {
+  -webkit-app-region: drag;
+}
+.pc-settings-drag {
+  -webkit-app-region: drag;
+}

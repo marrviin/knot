@@ -1,10 +1,8 @@
-# 🐋 Knot 项目设计方案（Knot Project Design）
-
-> “事大大结其绳，事小小结其绳。”
+# 🐋 Journal 项目设计方案（Journal Project Design）
 
 ## 一、项目概述
 
-**Knot** 是一款面向多智能体（Multi-Agent）串行工作流的**事件驱动型本地共享内存总线**（桌面端应用）。
+**Journal** 是一款面向多智能体（Multi-Agent）串行工作流的**事件驱动型本地共享内存总线**（桌面端应用）。
 
 本方案专为多个 Agent（如自研 Agent 与 Claude Code）在**同一工作目录**下**低频、串行、交替运行**的场景打造。
 
@@ -19,7 +17,7 @@
 
 通过 **「后台异步监听（输入）+ 静态 MCP Tool 供给（输出）」的黑盒外挂模式**，实现异构 Agent 之间**零污染、低代价**的记忆无缝接力：
 
-- 输入端：自研 Agent 只需按自己的原生习惯写记忆文件，Knot 在后台静默捕获；
+- 输入端：自研 Agent 只需按自己的原生习惯写记忆文件，Journal 在后台静默捕获；
 - 输出端：Claude Code 等三方工具通过标准 MCP 接口被动检索，无需任何源码适配。
 
 记忆数据 **100% 留存本地**；核心提炼层（事实提炼 / 语义去重 / 冲突裁决）默认按内置规则离线运行，用户可在设置中配置 OpenAI 兼容 LLM（自持 API Key）以启用智能提炼，届时仅提炼过程调用外部服务。
@@ -28,7 +26,7 @@
 
 ## 二、核心架构设计（Core Architecture）
 
-Knot 以 **Electron 桌面应用**为中央主服务核心，后台常驻 chokidar 文件监听，记忆管理真正引入 **mem0ai（Mem0 官方 Node SDK）**，并通过标准的 MCP（Model Context Protocol）服务端通信协议对外供给。
+Journal 以 **Electron 桌面应用**为中央主服务核心，后台常驻 chokidar 文件监听，记忆管理真正引入 **mem0ai（Mem0 官方 Node SDK）**，并通过标准的 MCP（Model Context Protocol）服务端通信协议对外供给。
 
 ### 2.1 架构总览
 
@@ -40,7 +38,7 @@ Knot 以 **Electron 桌面应用**为中央主服务核心，后台常驻 chokid
        │
        │ (1. Node.js 后台 Chokidar 异步零感捕获变动)
        ▼
- ┌───────────────────────  🐋 Knot 桌面端应用主服务  ───────────────────────┐
+ ┌───────────────────────  🐋 Journal 桌面端应用主服务  ───────────────────────┐
  │                                                                       │
  │  🧠 核心提炼层 (基于 Mem0 原理)：提取硬核技术决策、SOP，自动智能去重   │
  │                                                                       │
@@ -54,7 +52,7 @@ Knot 以 **Electron 桌面应用**为中央主服务核心，后台常驻 chokid
 
 ### 2.2 输入端：异步事件驱动监听（Event-Driven Watcher）
 
-自研 Agent 在本地流水线结束时，将**最终的高纯度硬核结论**（而非大段聊天 Log 垃圾）写入它原生的本地记忆文件（如 `.myagent/mem.json`）。Knot 桌面服务的后台常驻进程利用 **chokidar** 零感捕捉该文件变更，自动读入。
+自研 Agent 在本地流水线结束时，将**最终的高纯度硬核结论**（而非大段聊天 Log 垃圾）写入它原生的本地记忆文件（如 `.myagent/mem.json`）。Journal 桌面服务的后台常驻进程利用 **chokidar** 零感捕捉该文件变更，自动读入。
 
 由于更新属于**低频串行**（一小时甚至一天几次），彻底规避了高并发下的读写锁文件（File Lock）竞态冲突。
 
@@ -68,15 +66,15 @@ Knot 以 **Electron 桌面应用**为中央主服务核心，后台常驻 chokid
 
 ### 2.4 输出端：静态 MCP 被动供给（Static MCP Supply）
 
-Knot 将中央项目记忆池封装为标准的 **MCP 接口工具**。由于 Claude Code 类工具并不支持在运行中接收外界的异步工具更新通知，本方案采用 **“启动前静态对齐”** 的逻辑：
+Journal 将中央项目记忆池封装为标准的 **MCP 接口工具**。由于 Claude Code 类工具并不支持在运行中接收外界的异步工具更新通知，本方案采用 **“启动前静态对齐”** 的逻辑：
 
-> 当 Claude Code 开启新任务被唤醒时，会通过该 MCP Tool 主动向 Knot 发起一次检索请求，拉取前任 Agent 留下的最新绝对静态数据，完美规避伪实时脱节。
+> 当 Claude Code 开启新任务被唤醒时，会通过该 MCP Tool 主动向 Journal 发起一次检索请求，拉取前任 Agent 留下的最新绝对静态数据，完美规避伪实时脱节。
 
 ---
 
 ## 三、桌面端（Tauri + Node.js）核心模块工程实现
 
-Knot 作为桌面 App，非研发人员**双击安装即自带所有环境**，消灭 Python/Node 依赖地狱。
+Journal 作为桌面 App，非研发人员**双击安装即自带所有环境**，消灭 Python/Node 依赖地狱。
 
 ### 3.1 后台核心总线：常驻文件监听与增量提取（background.js）
 
@@ -90,7 +88,7 @@ import path from 'path';
 
 const memoryBus = new Memory(); // 数据存储在本地嵌入式 SQLite 中
 
-export function startKnotWatcher(projectPath) {
+export function startJournalWatcher(projectPath) {
     const targetFile = path.join(projectPath, '.myagent/mem.json');
     const projectId = path.basename(projectPath); // 用项目名作为跨 Agent 的统一 user_id
 
@@ -102,11 +100,11 @@ export function startKnotWatcher(projectPath) {
                 const rawContent = await fs.readFile(filePath, 'utf-8');
                 if (!rawContent.trim()) return;
 
-                console.log(`[Knot Watcher] 捕获到自研记忆文件变更，执行增量洗入...`);
+                console.log(`[Journal Watcher] 捕获到自研记忆文件变更，执行增量洗入...`);
                 // 自动进行实体提炼、语义冲突裁决与去重合并
                 await memoryBus.add(rawContent, { user_id: projectId });
             } catch (err) {
-                console.error("[Knot Error] 记忆流提取失败:", err);
+                console.error("[Journal Error] 记忆流提取失败:", err);
             }
         }, 500);
     });
@@ -139,35 +137,35 @@ export async function injectMcpToClaudeCode(tauriExecutablePath) {
         config = await fs.readJson(mcpConfigPath);
     }
 
-    // 隐式强行挂载 Knot 的 MCP 运行时
-    config.mcpServers["knot-shared-memory"] = {
+    // 隐式强行挂载 Journal 的 MCP 运行时
+    config.mcpServers["journal"] = {
         command: tauriExecutablePath,
         args: ["--mode", "mcp-server"]
     };
 
     await fs.writeJson(mcpConfigPath, config, { spaces: 2 });
-    return "Knot 记忆总线已成功绑定至 Claude Code！";
+    return "Journal 记忆总线已成功绑定至 Claude Code！";
 }
 ```
 
 ### 3.3 MCP 服务端 Tool 供给（被动响应输出接口）
 
-Knot 后端同时监听本地 Stdio 流，为启动的外部 Agent 随时按需输出记忆。
+Journal 后端同时监听本地 Stdio 流，为启动的外部 Agent 随时按需输出记忆。
 
 > ⚠️ 以下为示例代码，实施时需谨慎评审。
 
 ```javascript
-// 当 Claude Code 启动并调用 "fetch_project_knot" 工具时触发
+// 当 Claude Code 启动并调用 "recall_memories" 工具时触发
 async function handleMcpCall(query, projectId) {
     // 从本地已经通过监听洗净的中央库中，秒级语义检索高价值事实
-    const matchedKnots = await memoryBus.search(query, { user_id: projectId });
+    const matchedJournals = await memoryBus.search(query, { user_id: projectId });
 
-    if (!matchedKnots || matchedKnots.length === 0) {
-        return "【Knot 中央共享脑提示】当前项目暂无共享记忆沉淀。";
+    if (!matchedJournals || matchedJournals.length === 0) {
+        return "【Journal 中央共享脑提示】当前项目暂无共享记忆沉淀。";
     }
 
-    const formattedText = matchedKnots.map(k => `- ${k.content}`).join('\n');
-    return `【Knot 中央共享脑提示】关联到的历史接力资产如下：\n${formattedText}`;
+    const formattedText = matchedJournals.map(k => `- ${k.content}`).join('\n');
+    return `【Journal 中央共享脑提示】关联到的历史接力资产如下：\n${formattedText}`;
 }
 ```
 
@@ -175,7 +173,7 @@ async function handleMcpCall(query, projectId) {
 
 ## 四、可视化白盒看板（Visual Control Panel）
 
-为了打破 AI 记忆的“黑盒幻觉”，Knot 在前端提供一个极其简明、直观的可视化看板。
+为了打破 AI 记忆的“黑盒幻觉”，Journal 在前端提供一个极其简明、直观的可视化看板。
 
 ### 4.1 项目流管理
 
@@ -197,7 +195,7 @@ async function handleMcpCall(query, projectId) {
 
 ## 五、方案边界与设计取舍
 
-- **优雅的黑盒解耦**：自研 Agent 和三方开源工具完全不需要为彼此做任何源码适配，Knot 依靠文件监听和 MCP 桥接充当隐形胶水。
+- **优雅的黑盒解耦**：自研 Agent 和三方开源工具完全不需要为彼此做任何源码适配，Journal 依靠文件监听和 MCP 桥接充当隐形胶水。
 - **完美契合工程边界**：放弃了对“执行中高频动态更新”的过度追求，专为**低频、串行、交替**的真实开发流水线而生，换来了极高的运行鲁棒性与超低的环境配置门槛。
 
 ---
@@ -231,7 +229,7 @@ async function handleMcpCall(query, projectId) {
 
 ### 阶段三：MCP 服务端与配置注入
 
-- 实现 Stdio 模式的 MCP Server（`--mode mcp-server`），暴露 `fetch_project_knot` 工具；
+- 实现 Stdio 模式的 MCP Server（`--mode mcp-server`），暴露 `recall_memories` 工具；
 - 实现 UI 一键改写 `~/.claude/mcp.json` 的注入逻辑（含已有配置的合并保护）。
 
 ### 阶段四：前端可视化看板
@@ -244,7 +242,7 @@ async function handleMcpCall(query, projectId) {
 ## 八、开放问题 *（整理补充，待定项）*
 
 1. **记忆文件 Schema**：`.myagent/mem.json` 的具体数据格式约定（纯文本条目数组？带类型/时间戳的结构化对象？）需与自研 Agent 对齐。
-2. **MCP Tool 接口签名**：`fetch_project_knot` 的入参（query、project_id 的来源方式）、返回结构与 token 上限需进一步定义；是否需要额外的写入/列出工具待评估。
+2. **MCP Tool 接口签名**：`recall_memories` 的入参（query、project_id 的来源方式）、返回结构与 token 上限需进一步定义；是否需要额外的写入/列出工具待评估。
 3. **提炼层本地化**：已决策：应用框架迁移至 Electron，真正引入 mem0ai 库做记忆管理；LLM 走 MiniMax（用户自配 API Key，默认关闭、设置中开启）；embedding 用 MiniMax embo-01，经本地 HTTP 转换层适配 OpenAI 格式（embo-01 实测不兼容 OpenAI input 格式）；向量库用 mem0 自带 SQLite 持久化（vectorStore.config.dbPath），无需 Qdrant。
 4. **多项目隔离细节**：同目录改名、多 Agent 并发写同一文件（虽为低频但非零概率）的兜底策略。
 5. **配置注入安全**：改写 `~/.claude/mcp.json` 前的备份与卸载/解绑（uninject）逻辑。

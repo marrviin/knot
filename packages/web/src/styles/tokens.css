@@ -1,0 +1,56 @@
+/* ── Design tokens ────────────────────────────────────────────────────────────
+ * All design tokens are registered uniformly in @theme; Tailwind generates the
+ * corresponding atomic classes (palette -> `bg-*` / `text-*` / `border-*`, fonts -> `font-mono`).
+ * JSX always uses semantic atomic classes (e.g. `bg-panel`, `text-muted`, `border-line`).
+ * Token values are `var(--ant-*)`, bridging antd cssVar (see the ConfigProvider in app.tsx)
+ * and resolving lazily at the point of use, so the whole site follows the antd theme
+ * automatically (including a future dark mode). */
+
+@theme {
+  /* ── UI neutral colors (bridged to antd theme tokens) ─────────────────────
+     Names avoid colliding ("stuttering") with Tailwind atomic-class prefixes:
+     surface (container bg `bg-surface`), panel (layout bg `bg-panel`),
+     line (borders `border-line`), fg (body text `text-fg`). */
+  --color-surface: var(--ant-color-bg-container, #fafafa);
+  --color-panel: var(--ant-color-bg-layout, #f2f2f2);
+  --color-line: var(--ant-color-border, #e8e8ea);
+  --color-split: var(--ant-color-split, rgba(0, 0, 0, 0.06));
+  --color-fg: var(--ant-color-text, #1f1f1f);
+  --color-muted: var(--ant-color-text-tertiary, #8a8a8a);
+  --color-hover: var(--ant-control-item-bg-hover, rgba(0, 0, 0, 0.04));
+  --color-fill: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+  --color-accent: var(--ant-color-primary, #C04A3E);
+  --color-accent-hover: var(--ant-color-primary-hover, #5a86ff);
+  --color-accent-bg: var(--ant-color-primary-bg, #eaf0ff);
+
+  /* ── Monospace font ───────────────────────────────────────────────────────── */
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── Handwriting font (journal paper) ─────────────────────────────────────
+     LXGW WenKai Lite 分片 woff2（fetch-font.mjs 产物，见 assets/fonts/lxgw-wenkai-lite），
+     系统楷体兜底。 */
+  --font-hand: "LXGW WenKai Lite", "LXGW WenKai", "Kaiti SC", "STKaiti", serif;
+
+  /* ── Frosted glass (dropdown menus) ────────────────────────────────────────
+     The dropdown menu panel is semi-transparent with backdrop-blur over the app
+     content behind it (the .ant-dropdown override in styles/antd.css). */
+  --pc-glass-bg: #f7f7f7;
+}
+
+/* ── Journal paper palette ──────────────────────────────────────────────────────
+   日记是独立的"纸张语境"，不走 antd 桥：米黄纸、横格线、蓝黑墨水、红笔。
+   Only consumed by the .jnl-* rules in components.css. */
+:root {
+  --jnl-paper: #f8f3e7;
+  --jnl-paper-edge: #efe7d4;
+  --jnl-rule: rgba(96, 125, 168, 0.18);
+  --jnl-ink: #33405a;
+  --jnl-pen: #3f4f6d;
+  --jnl-red: #c04a3e;
+  --jnl-block: rgba(63, 79, 109, 0.07);
+}
+
+/* Native controls (scrollbars, form controls) follow the theme; light only for now. */
+:root {
+  color-scheme: light;
+}

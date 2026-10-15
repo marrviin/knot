@@ -1,0 +1,35 @@
+/* ── Base / reset ──────────────────────────────────────────────────────────────
+ * The project's own minimal reset. Tailwind preflight is deliberately not imported
+ * (it would interfere with antd components' default styles); the html/body/#root
+ * rules below replace it. */
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', 'Microsoft YaHei',
+    sans-serif;
+  color: var(--color-fg);
+  background: var(--color-panel);
+}
+
+/* The journal-book window is a transparent BrowserWindow — the panel fill must
+ * give way so only the book floats over the user's desktop. */
+html[data-window='journal'] {
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  /* The app is a fixed-viewport shell (h-screen + overflow-hidden); all scrolling happens
+   * in inner panels. antd Tooltips/popups portal to document.body and can momentarily
+   * poke out of the viewport while positioning, flashing a document-level scrollbar —
+   * lock the root node here. */
+  overflow: hidden;
+}
+
+body {
+  font-feature-settings: 'tnum';
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+}

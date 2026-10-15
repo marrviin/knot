@@ -1,5 +1,5 @@
 {
-  "name": "knot",
+  "name": "manta-journal",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -7,45 +7,20 @@
   "engines": {
     "node": ">=20"
   },
-  "main": "dist-electron/main.cjs",
   "scripts": {
-    "dev": "node scripts/kill-port.mjs 5173 && pnpm rebuild:electron >/dev/null 2>&1; pnpm build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
-    "build": "pnpm build:electron && vite build",
-    "build:electron": "rm -rf dist-electron && esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist-electron --out-extension:.js=.cjs --external:electron --external:better-sqlite3 --external:mem0ai --external:chokidar",
-    "start": "electron .",
-    "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
-    "preview": "vite preview",
-    "dist": "electron-builder --mac",
-    "rebuild:electron": "node scripts/rebuild-sqlite-electron.mjs"
-  },
-  "dependencies": {
-    "@ant-design/cssinjs": "^2.1.2",
-    "@ant-design/icons": "^6.3.2",
-    "antd": "^6.6.2",
-    "better-sqlite3": "^12.4.1",
-    "chokidar": "^4.0.3",
-    "classnames": "^2.5.1",
-    "mem0ai": "^3.3.1",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "dev": "pnpm --filter @journal/desktop rebuild:electron >/dev/null 2>&1; pnpm --filter @journal/desktop build:main && pnpm build:server && concurrently -k \"pnpm --filter @journal/web dev\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron packages/desktop\"",
+    "build": "pnpm --filter @journal/web build && pnpm --filter @journal/desktop build",
+    "build:server": "pnpm --filter @journal/server build",
+    "rebuild:electron": "pnpm --filter @journal/desktop rebuild:electron",
+    "start": "electron packages/desktop",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "dist": "pnpm build && pnpm build:server && pnpm --filter @journal/desktop dist"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.2.1",
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24",
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^9",
     "cross-env": "^10",
     "electron": "^44.7.0",
-    "electron-builder": "^26.15.3",
-    "esbuild": "^0.25",
-    "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0",
-    "vite": "^5.4.0",
-    "vitest": "^3.2.7",
     "wait-on": "^9"
   }
 }

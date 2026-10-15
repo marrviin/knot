@@ -1,0 +1,43 @@
+appId: dev.marrviin.journal
+productName: Journal
+
+directories:
+  # 图标等构建资源（build/icon.icns）
+  buildResources: build
+  output: release
+
+# package.json + 生产依赖 node_modules 会被 electron-builder 自动打入，
+# 这里只需补充构建产物（main 指向 dist-electron/main.cjs，渲染层在 dist/，
+# 由 @journal/web 构建直出）+ build/（tray/Dock 图标走 app.getAppPath()/build/…）
+# + dist-server/（记忆服务 bundle，server-process.ts 打包态从 resourcesPath 读取）
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - build/**/*
+
+# 记忆服务 bundle 放到 Resources/dist-server（server-process.ts 的打包态查找路径）
+extraResources:
+  - from: ../server/dist-server
+    to: dist-server
+
+# 原生/大二进制依赖必须解包到 asar 外才能被 require：
+# better-sqlite3 / onnxruntime-node 含 .node 原生模块；transformers.js 运行时
+# 按需加载 onnxruntime-node（本地 embedding，见 server/src/local-embedder.ts）
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/onnxruntime-node/**"
+  - "**/node_modules/@huggingface/transformers/**"
+  - "**/node_modules/onnxruntime-common/**"
+  - "**/node_modules/sharp/**"
+
+# CI 上没有签名证书，identity: null 走 ad-hoc 签名（本机可正常运行，
+# 分发给他人首次打开需右键 -> 打开；正式分发再接 Apple Developer ID 公证）
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
